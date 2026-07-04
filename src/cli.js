@@ -487,8 +487,8 @@ async function milestoneCommand(args, runtime) {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'milestones save --project "Roadmap" --name "Beta"' });
     if (parsed.help) return milestoneSaveHelp();
     const toolArgs = collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]);
-    await applyRepoProjectDefault(toolArgs, runtime);
-    if (!toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones save --project "<project>" --name "<name>"`']);
+    if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
+    if (!toolArgs.id && !toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones save --project "<project>" --name "<name>"`']);
     const result = await runtime.client.callTool("save_milestone", toolArgs);
     const milestone = mutationData(result, [
       'Run `linear-axi milestones save --project "<project>" --name "<name>"`',

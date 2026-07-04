@@ -260,6 +260,39 @@ test("repo project default applies to document creates but not updates", async (
   assert.deepEqual(seen, { name: "update_document", args: { id: "doc1", title: "Updated" } });
 });
 
+test("repo project default applies to milestone creates but not updates", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
+
+  let seen;
+  await run(
+    ["milestones", "save", "--name", "Beta"],
+    runtime({
+      cwd: repo,
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "m1", name: "Beta" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "save_milestone", args: { name: "Beta", project: "Roadmap" } });
+
+  await run(
+    ["milestones", "save", "--id", "m1", "--targetDate", "2026-09-01"],
+    runtime({
+      cwd: repo,
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "m1", name: "Beta" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "save_milestone", args: { id: "m1", targetDate: "2026-09-01" } });
+});
+
 test("repo project discovery walks up from a subdirectory and explicit project wins", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   const child = join(repo, "packages", "app");
