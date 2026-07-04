@@ -13,6 +13,22 @@ test("top help exposes Linear resource commands", async () => {
   assert.doesNotMatch(output, /call <tool>/);
 });
 
+test("home auth errors suggest login before list commands", async () => {
+  const output = await run(
+    [],
+    runtime({
+      callTool: async () => {
+        const error = new Error("auth required");
+        error.authorizationUrl = "https://linear.example/authorize?state=expected-state";
+        throw error;
+      },
+    }),
+  );
+
+  assert.match(output, /error: Linear MCP OAuth authorization required/);
+  assert.match(output, /help\[4\]:\n  Run `linear-axi auth login` to authorize Linear MCP access\n  Run `linear-axi issues list --assignee me --limit 50` to list issues/);
+});
+
 test("projects list uses list_projects wrapper", async () => {
   let seen;
   const output = await run(

@@ -81,11 +81,13 @@ async function makeRuntime(context) {
 async function home(runtime) {
   let issueRows = [];
   let error;
+  let authRequired = false;
   try {
     const result = await runtime.client.callTool("list_issues", { assignee: "me", limit: 10, orderBy: "updatedAt" });
     issueRows = compactIssues(extractData(result)).slice(0, 10);
   } catch (caught) {
     error = mcpErrorMessage(caught);
+    authRequired = isAuthRequiredError(caught);
   }
 
   const output = {
@@ -104,6 +106,7 @@ async function home(runtime) {
   }
 
   output.help = [
+    ...(authRequired ? ["Run `linear-axi auth login` to authorize Linear MCP access"] : []),
     "Run `linear-axi issues list --assignee me --limit 50` to list issues",
     "Run `linear-axi projects list --limit 50` to list projects",
     "Run `linear-axi comments list --issue LIN-123` to list issue comments",
@@ -743,11 +746,18 @@ function normalizeError(error) {
 }
 
 function mcpErrorMessage(error) {
+  if (error?.authorizationUrl) {
+    return "Linear MCP OAuth authorization required";
+  }
   const message = error && typeof error.message === "string" ? error.message : String(error);
   if (/unauthorized|401|invalid_token|access token/i.test(message)) {
     return "Linear MCP authentication failed";
   }
   return message;
+}
+
+function isAuthRequiredError(error) {
+  return Boolean(error?.authorizationUrl);
 }
 
 function topHelp() {
