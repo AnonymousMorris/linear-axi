@@ -1456,16 +1456,19 @@ function groupHelp(name, subcommands) {
       "linear-axi issues list --assignee me --limit 25",
       "linear-axi issues view LIN-123",
       'linear-axi issues create --title "Fix auth" --team ENG',
+      "linear-axi issues update --id LIN-123 --state Done",
     ],
     projects: [
       "linear-axi projects list --limit 25",
       'linear-axi projects create --name "Roadmap" --team ENG',
+      'linear-axi projects update --id <id> --summary "Updated scope"',
       'linear-axi issues create --title "Task" --team ENG --project "Roadmap"',
     ],
     documents: [
       "linear-axi documents list --limit 25",
       "linear-axi documents view <id>",
       'linear-axi documents create --title "Spec" --team ENG --content-file spec.md',
+      'linear-axi documents update --id <id> --content "Updated"',
     ],
     comments: [
       "linear-axi comments list --issue LIN-123",
@@ -1480,6 +1483,7 @@ function groupHelp(name, subcommands) {
       'linear-axi milestones list --project "Roadmap"',
       'linear-axi milestones view --project "Roadmap" "Beta"',
       'linear-axi milestones create --project "Roadmap" --name "Beta"',
+      'linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>',
     ],
     cycles: ["linear-axi cycles list --team ENG --type current"],
     statuses: ["linear-axi statuses list --team ENG"],

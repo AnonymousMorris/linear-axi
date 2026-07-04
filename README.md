@@ -52,13 +52,14 @@ linear-axi documents update --id <id> --content "Updated"
 linear-axi milestones list --project "Roadmap"
 linear-axi milestones view --project "Roadmap" "Beta"
 linear-axi milestones create --project "Roadmap" --name "Beta"
+linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>
 linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
 ```
 
 List commands use a compact schema by default. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response.
 
-Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Mutation commands return compact success objects with the id, title/name, URL, and next-step hints. Use `create` for new objects and `update` for edits. Updates verify the target exists before mutating. Issue and project creates check for existing same-name items and return conflict hints when a likely duplicate already exists. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
+Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Mutation commands return compact success objects with the id, title/name, URL, and next-step hints. Use `create` for new objects and `update` for edits; old resource `save` commands return structured usage guidance instead of mutating. Updates verify the target exists before mutating, and comment creates verify the issue exists before adding the comment. Issue and project creates check for existing same-name items and return conflict hints when a likely duplicate already exists. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
 
 The default Linear MCP server does not expose releases or status mutations, so `linear-axi releases ...`, `linear-axi statuses save`, and `linear-axi statuses delete` return structured usage errors instead of calling the server.
 
