@@ -12,11 +12,28 @@ export async function resolveMcpUrl(env) {
   const configPath = env.CODEX_CONFIG ?? join(homedir(), ".codex", "config.toml");
   try {
     const text = await readFile(configPath, "utf8");
-    const match = text.match(/\[mcp_servers\.linear\][\s\S]*?url\s*=\s*"([^"]+)"/);
-    return match?.[1] ?? DEFAULT_MCP_URL;
+    return extractLinearMcpUrl(text) ?? DEFAULT_MCP_URL;
   } catch {
     return DEFAULT_MCP_URL;
   }
+}
+
+export function extractLinearMcpUrl(text) {
+  let inLinearTable = false;
+
+  for (const line of text.split(/\r?\n/)) {
+    const table = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+    if (table) {
+      inLinearTable = table[1].trim() === "mcp_servers.linear";
+      continue;
+    }
+
+    if (!inLinearTable) continue;
+    const url = line.match(/^\s*url\s*=\s*(['"])(.*?)\1\s*(?:#.*)?$/);
+    if (url) return url[2];
+  }
+
+  return null;
 }
 
 export function collapseHome(path) {

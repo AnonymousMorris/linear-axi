@@ -133,27 +133,43 @@ test("issues view full returns only matching issue detail", async () => {
       listTools: async () => [{ name: "get_issue" }],
       callTool: async (name, args) => {
         calls.push({ name, args });
-        if (name === "list_issues") {
-          return {
-            structuredContent: {
-              issues: [
-                { id: "other", identifier: "LIN-10", title: "Wrong" },
-                { id: "issue-id", identifier: "LIN-1", title: "Right" },
-              ],
-            },
-          };
-        }
         return { structuredContent: { id: "issue-id", identifier: "LIN-1", title: "Right", description: "Full body" } };
       },
     }),
   );
 
   assert.deepEqual(calls, [
-    { name: "list_issues", args: { query: "LIN-1", limit: 10 } },
     { name: "get_issue", args: { id: "LIN-1" } },
   ]);
   assert.match(output, /title: Right/);
   assert.match(output, /description: Full body/);
+  assert.doesNotMatch(output, /Wrong/);
+});
+
+test("issues view falls back to exact list match when get_issue is unavailable", async () => {
+  const calls = [];
+  const output = await run(
+    ["issues", "view", "LIN-1", "--full"],
+    runtime({
+      listTools: async () => [{ name: "list_issues" }],
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        return {
+          structuredContent: {
+            issues: [
+              { id: "other", identifier: "LIN-10", title: "Wrong" },
+              { id: "issue-id", identifier: "LIN-1", title: "Right" },
+            ],
+          },
+        };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "list_issues", args: { query: "LIN-1", limit: 10 } },
+  ]);
+  assert.match(output, /title: Right/);
   assert.doesNotMatch(output, /Wrong/);
 });
 

@@ -383,16 +383,17 @@ async function authCommand(args, runtime) {
 }
 
 async function getIssueDetail(id, runtime) {
-  const listed = await runtime.client.callTool("list_issues", { query: id, limit: 10 });
-  const rawMatches = asArray(extractData(listed)).filter((issue) => issue.id === id || issue.identifier === id);
-  if (rawMatches.length === 0) return null;
   try {
     const detailed = await callAvailableTool(runtime, ["get_issue"], { id });
     return extractData(detailed);
   } catch (error) {
     if (!isUnknownToolError(error)) throw error;
-    return rawMatches[0];
   }
+
+  const listed = await runtime.client.callTool("list_issues", { query: id, limit: 10 });
+  const rawMatches = asArray(extractData(listed)).filter((issue) => issue.id === id || issue.identifier === id);
+  if (rawMatches.length === 0) return null;
+  return rawMatches[0];
 }
 
 async function callAvailableTool(runtime, candidates, args) {
