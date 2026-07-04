@@ -67,7 +67,42 @@ test("list commands support fields and pagination hints", async () => {
   assert.match(output, /projects\[1\]\{id,name,state\}:/);
   assert.match(output, /p1,Roadmap,started/);
   assert.doesNotMatch(output, /ignored/);
-  assert.match(output, /Run `linear-axi projects list --limit 25 --query roadmap --fields \\"id,name,state\\" --cursor next-page` to continue/);
+  assert.match(output, /Run `linear-axi projects list --limit 25 --query roadmap --fields 'id,name,state' --cursor next-page` to continue/);
+});
+
+test("list pagination hints shell-escape unsafe values", async () => {
+  const output = await run(
+    ["projects", "list", "--query", "roadmap $(touch /tmp/axi)'$HOME", "--limit", "25"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          projects: [{ id: "p1", name: "Roadmap" }],
+          cursor: "next $(touch /tmp/cursor)'$TOKEN",
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /cursor: next \$\(touch \/tmp\/cursor\)'\$TOKEN/);
+  assert.match(output, /--query 'roadmap \$\(touch \/tmp\/axi\)'\\''\$HOME' --cursor 'next \$\(touch \/tmp\/cursor\)'\\''\$TOKEN'/);
+});
+
+test("list pagination hints are emitted for cursor-only responses", async () => {
+  const output = await run(
+    ["projects", "list", "--limit", "25"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          projects: [{ id: "p1", name: "Roadmap" }],
+          pageInfo: { endCursor: "next-page" },
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /cursor: next-page/);
+  assert.match(output, /Run `linear-axi projects list --limit 25 --cursor next-page` to continue/);
 });
 
 test("list full counts rows inside response envelopes", async () => {

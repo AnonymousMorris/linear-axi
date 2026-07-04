@@ -694,13 +694,15 @@ function appendFlag(parts, name, value) {
 function formatCommandArg(value) {
   const text = String(value);
   if (/^[A-Za-z0-9_./:@-]+$/.test(text)) return text;
-  return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  return `'${text.replace(/'/g, "'\\''")}'`;
 }
 
 function paginationInfo(data, rowCount) {
   const total = data?.totalCount ?? data?.total ?? data?.pageInfo?.totalCount;
-  const hasNextPage = Boolean(data?.hasNextPage ?? data?.pageInfo?.hasNextPage);
+  const hasNextPageValue = data?.hasNextPage ?? data?.pageInfo?.hasNextPage;
   const cursor = data?.cursor ?? data?.nextCursor ?? data?.pageInfo?.endCursor;
+  const hasCursor = cursor !== undefined && cursor !== null && cursor !== "";
+  const hasNextPage = hasNextPageValue === undefined ? hasCursor : Boolean(hasNextPageValue);
   if (typeof total === "number") {
     return {
       count: `${rowCount} of ${total} total`,
