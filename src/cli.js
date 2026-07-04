@@ -1264,9 +1264,9 @@ function groupHelp(name, subcommands) {
       "linear-axi auth finish --code <code>",
     ],
     milestones: [
-      'linear-axi milestones list --project "Roadmap"',
-      'linear-axi milestones view --project "Roadmap" "Beta"',
-      'linear-axi milestones save --project "Roadmap" --name "Beta"',
+      "linear-axi milestones list",
+      'linear-axi milestones view "Beta"',
+      'linear-axi milestones save --name "Beta"',
     ],
     cycles: ["linear-axi cycles list --team ENG --type current"],
     statuses: ["linear-axi statuses list --team ENG"],
@@ -1310,6 +1310,8 @@ examples:
   linear-axi ${alias} list --limit 25
   linear-axi ${alias} list --fields ${fieldHint(alias)}
   linear-axi ${alias} list --query "auth" --full
+notes:
+  issues and documents use the repo default project from .linear-project unless --project is passed.
 `;
 }
 
@@ -1350,6 +1352,8 @@ flags:
 examples:
   linear-axi documents save --title "Spec" --team ENG --content-file spec.md
   linear-axi documents save --id <id> --content "Updated"
+notes:
+  creates use the repo default project from .linear-project unless --project is passed.
 `;
 }
 
@@ -1382,33 +1386,36 @@ examples:
 }
 
 function milestoneListHelp() {
-  return `usage: linear-axi milestones list --project <project> [--full]
+  return `usage: linear-axi milestones list [--project <project>] [--full]
 flags:
-  --project <project>
+  --project <project>  overrides the repo default project
   --full
 examples:
+  linear-axi milestones list
   linear-axi milestones list --project "Roadmap"
 `;
 }
 
 function milestoneViewHelp() {
-  return `usage: linear-axi milestones view --project <project> <milestone>
+  return `usage: linear-axi milestones view [--project <project>] <milestone>
 flags:
-  --project <project>
+  --project <project>  overrides the repo default project
 examples:
+  linear-axi milestones view "Beta"
   linear-axi milestones view --project "Roadmap" "Beta"
 `;
 }
 
 function milestoneSaveHelp() {
-  return `usage: linear-axi milestones save --project <project> (--id <id> | --name <name>)
+  return `usage: linear-axi milestones save [--project <project>] (--id <id> | --name <name>)
 flags:
   --id <id>
   --name <name>
-  --project <project>
+  --project <project>  overrides the repo default project
   --description <markdown>
   --targetDate <yyyy-mm-dd>
 examples:
+  linear-axi milestones save --name "Beta"
   linear-axi milestones save --project "Roadmap" --name "Beta"
 `;
 }
@@ -1476,6 +1483,8 @@ examples:
   linear-axi issues save --title "Fix auth" --team ENG
   linear-axi issues save --title "Task" --team ENG --project "Roadmap"
   linear-axi issues save --id LIN-123 --state Done
+notes:
+  creates use the repo default project from .linear-project unless --project is passed.
 `;
 }
 
