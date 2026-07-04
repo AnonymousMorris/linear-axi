@@ -45,7 +45,7 @@ export function paginationInfo(data, rowCount) {
     };
   }
   return {
-    count: hasNextPage ? `${rowCount} returned, more available` : `${rowCount} returned`,
+    count: hasNextPage ? `${rowCount} returned (more available)` : `${rowCount} returned`,
     cursor: hasNextPage ? cursor : undefined,
   };
 }

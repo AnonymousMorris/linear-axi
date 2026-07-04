@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { parseFlags, AxiError, usage } from "./args.js";
 import { collapseHome, resolveMcpUrl } from "./config.js";
 import { renderToon } from "./format.js";
@@ -68,7 +68,11 @@ export async function main(args, context) {
     context.stdout.write(output);
   } catch (error) {
     const axiError = normalizeError(error);
-    context.stdout.write(renderToon({ error: axiError.message, help: axiError.help }));
+    context.stdout.write(renderToon({
+      error: axiError.message,
+      code: axiError.code,
+      ...(axiError.help.length > 0 ? { help: axiError.help } : {}),
+    }));
     process.exitCode = axiError.exitCode;
   } finally {
     await runtime.client?.close();
@@ -120,40 +124,34 @@ async function makeRuntime(context) {
 }
 
 async function home(runtime) {
-  let issueRows = [];
+  let issueCount = 0;
+  let issueMore = false;
   let error;
-  let authRequired = false;
   const repoProject = await readRepoProject(runtime.cwd);
   try {
     const result = await runtime.client.callTool("list_issues", withRepoProject({ assignee: "me", limit: 10, orderBy: "updatedAt" }, repoProject));
-    issueRows = compactIssues(extractData(result)).slice(0, 10);
+    const data = extractData(result);
+    issueCount = asArray(data).length;
+    issueMore = Boolean(paginationInfo(data, issueCount).cursor);
   } catch (caught) {
     error = mcpErrorMessage(caught);
-    authRequired = isAuthRequiredError(caught);
   }
 
   const output = {
     bin: collapseHome(runtime.binPath),
     description: "AXI wrapper around the configured Linear MCP server",
-    mcp: { url: runtime.mcpUrl },
-    ...(repoProject ? { project: repoProject.project } : {}),
+    project: repoProject?.project ?? await workspaceName(runtime.cwd),
   };
 
   if (error) {
     output.status = "Linear MCP connection unavailable";
     output.error = error;
-  } else if (issueRows.length === 0) {
-    output.issues = "0 issues assigned to me found";
   } else {
-    output.issues = issueRows;
+    output.issues = `${issueCount}${issueMore ? "+" : ""} assigned to me`;
   }
 
   output.help = [
-    ...(authRequired ? ["Run `linear-axi auth login` to authorize Linear MCP access"] : []),
-    ...(repoProject ? [] : ["Run `linear-axi init --project <project>` to bind this repo to a Linear project"]),
-    "Run `linear-axi issues list --assignee me --limit 50` to list issues",
-    "Run `linear-axi projects list --limit 50` to list projects",
-    "Run `linear-axi comments list --issue LIN-123` to list issue comments",
+    "Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents",
   ];
 
   return renderToon(output);
@@ -225,7 +223,10 @@ async function issueCommand(args, runtime) {
       "Run `linear-axi issues view <id>` to view one issue",
     ]);
     const detail = await getIssueDetail(id, runtime);
-    if (!detail) return renderToon({ issues: `0 issues found for ${id}` });
+    if (!detail) throw notFound("issue", id, [
+      `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
+      'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
+    ]);
     if (parsed.full) return renderToon({ issue: detail });
     const compact = compactIssueDetail(detail);
     return renderToon({
@@ -390,12 +391,8 @@ async function aliasListCommand(alias, args, runtime) {
       : compactRows(alias, data);
   const rowCount = dataRows.length;
   const page = paginationInfo(data, rowCount);
-  const listValue = Array.isArray(rows) && rows.length === 0 ? `0 ${publicName} found` : rows;
-  const help = [
-    `Run \`linear-axi ${publicName} list --full\` to show the full response`,
-    `Run \`linear-axi ${publicName} list --fields ${fieldHint(publicName)}\` to choose fields`,
-    `Run \`linear-axi ${publicName} list --query "<text>"\` to search`,
-  ];
+  const listValue = Array.isArray(rows) && rows.length === 0 ? [] : rows;
+  const help = listHints(publicName, rowCount);
   if (page.cursor) {
     help.push(`Run \`${continuationCommand(`linear-axi ${publicName} list`, parsed, LIST_CONTINUATION_FLAGS, page.cursor)}\` to continue`);
   }
@@ -405,6 +402,30 @@ async function aliasListCommand(alias, args, runtime) {
     [publicName]: listValue,
     help,
   });
+}
+
+function listHints(publicName, rowCount) {
+  if (rowCount === 0) return emptyListHints(publicName);
+  return [`Run \`linear-axi ${publicName} list --fields ${fieldHint(publicName)}\` to choose fields`];
+}
+
+function emptyListHints(publicName) {
+  if (publicName === "issues") {
+    return [
+      'Run `linear-axi issues create --title "..." --team "<team>"` to create an issue',
+      "Run `linear-axi issues list --state done` to see done issues",
+    ];
+  }
+  if (publicName === "projects") {
+    return ['Run `linear-axi projects create --name "..." --team "<team>"` to create a project'];
+  }
+  if (publicName === "documents") {
+    return ['Run `linear-axi documents create --title "..." --team "<team>" --content-file <path>` to create a document'];
+  }
+  if (publicName === "comments") {
+    return ['Run `linear-axi comments create --issue <id> --body-file <path>` to create a comment'];
+  }
+  return [`Run \`linear-axi ${publicName} list --query "<text>"\` to search ${publicName}`];
 }
 
 async function projectCommand(args, runtime) {
@@ -470,7 +491,10 @@ async function documentCommand(args, runtime) {
     const id = parsed.positionals[0] ?? parsed.id;
     if (!id) throw usage("document id is required", ["Run `linear-axi documents view <id>`"]);
     const detail = await getDocumentDetail(id, runtime);
-    if (!detail) return renderToon({ documents: `0 documents found for ${id}` });
+    if (!detail) throw notFound("document", id, [
+      `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
+      'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
+    ]);
     if (parsed.full) return renderToon({ document: detail });
     const compact = compactDocumentDetail(detail, id);
     return renderToon({
@@ -538,7 +562,7 @@ async function commentCommand(args, runtime) {
     const rows = parsed.full ? data : compactComments(data);
     const rowCount = asArray(data).length;
     const page = paginationInfo(data, rowCount);
-    const commentsValue = Array.isArray(rows) && rows.length === 0 ? `0 comments found for ${parsed.issue}` : rows;
+    const commentsValue = Array.isArray(rows) && rows.length === 0 ? [] : rows;
     const help = [`Run \`linear-axi comments create --issue ${parsed.issue} --body "..."\` to add a comment`];
     if (!parsed.full && Array.isArray(rows) && rows.some((comment) => comment.truncated)) {
       help.push(`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`);
@@ -844,7 +868,7 @@ async function getIssueDetail(id, runtime) {
   try {
     const detailed = await callAvailableTool(runtime, ["get_issue"], { id });
     const data = extractData(detailed);
-    return isEmptyObject(data) ? null : data;
+    return isEmptyObject(data) || isBlankIssueDetail(data) ? null : data;
   } catch (error) {
     if (!isUnknownToolError(error)) throw error;
   }
@@ -858,7 +882,7 @@ async function getIssueDetail(id, runtime) {
 async function ensureIssueExists(id, runtime) {
   const issue = await getIssueDetail(id, runtime);
   if (!issue) {
-    throw new AxiError("operational", `issue not found: ${id}`, [
+    throw notFound("issue", id, [
       `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
       "Run `linear-axi issues create --title \"Title\" --team \"<team>\"` to create a new issue",
     ]);
@@ -887,7 +911,7 @@ async function getProjectDetail(id, runtime) {
 async function ensureProjectExists(id, runtime) {
   const project = await getProjectDetail(id, runtime);
   if (!project) {
-    throw new AxiError("operational", `project not found: ${id}`, [
+    throw notFound("project", id, [
       `Run \`linear-axi projects list --query ${formatCommandArg(id)} --fields id,name,status\` to search for the project`,
       'Run `linear-axi projects create --name "Roadmap" --team "<team>"` to create a new project',
     ]);
@@ -971,7 +995,7 @@ async function getDocumentDetail(id, runtime) {
   try {
     const detailed = await callAvailableTool(runtime, ["get_document"], { id });
     const data = extractData(detailed);
-    return isEmptyObject(data) ? null : sanitizeDocument(data, id);
+    return isEmptyObject(data) || isBlankDocumentDetail(data) ? null : sanitizeDocument(data, id);
   } catch (error) {
     if (!isUnknownToolError(error)) throw error;
   }
@@ -985,7 +1009,7 @@ async function getDocumentDetail(id, runtime) {
 async function ensureDocumentExists(id, runtime) {
   const document = await getDocumentDetail(id, runtime);
   if (!document) {
-    throw new AxiError("operational", `document not found: ${id}`, [
+    throw notFound("document", id, [
       `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
       'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
     ]);
@@ -997,7 +1021,7 @@ async function ensureMilestoneExists(project, id, runtime) {
   const result = await runtime.client.callTool("get_milestone", { project, query: id });
   const milestone = extractData(result);
   if (!milestone || (typeof milestone === "object" && Object.keys(milestone).length === 0)) {
-    throw new AxiError("operational", `milestone not found: ${id}`, [
+    throw notFound("milestone", id, [
       `Run \`linear-axi milestones list --project ${formatCommandArg(project)}\` to find the milestone id`,
       `Run \`linear-axi milestones create --project ${formatCommandArg(project)} --name "<name>"\` to create a new milestone`,
     ]);
@@ -1011,6 +1035,23 @@ function isSameText(left, right) {
 
 function isEmptyObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+function isBlankIssueDetail(value) {
+  return isBlankDetail(value, ["identifier", "id", "title"]);
+}
+
+function isBlankDocumentDetail(value) {
+  return isBlankDetail(value, ["id", "title", "name"]);
+}
+
+function isBlankDetail(value, identityFields) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return identityFields.every((field) => !hasText(value[field]));
+}
+
+function hasText(value) {
+  return String(value ?? "").trim() !== "";
 }
 
 function belongsToTeam(item, team) {
@@ -1064,6 +1105,10 @@ function normalizeError(error) {
   ]);
 }
 
+function notFound(resource, id, help = []) {
+  return new AxiError("not_found", `${resource} not found: ${id}`, help);
+}
+
 function mcpErrorMessage(error) {
   if (error?.authorizationUrl) {
     return "Linear MCP OAuth authorization required";
@@ -1075,14 +1120,17 @@ function mcpErrorMessage(error) {
   return message;
 }
 
-function isAuthRequiredError(error) {
-  return Boolean(error?.authorizationUrl);
+async function workspaceName(cwd) {
+  const root = await findGitRoot(cwd);
+  return basename(root ?? resolve(cwd));
 }
 
 function topHelp() {
-  return `usage: linear-axi <command>
+  return `usage: linear-axi [command] [args] [flags]
 commands[12]:
-  init, auth, issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
+  (none)=dashboard, init, auth, issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
+flags[2]:
+  --help, -h
 examples:
   linear-axi
   linear-axi init --project "Roadmap"
@@ -1147,11 +1195,41 @@ function groupHelp(name, subcommands) {
     cycles: ["linear-axi cycles list --team ENG --type current"],
     statuses: ["linear-axi statuses list --team ENG"],
   };
-  return `usage: linear-axi ${name} <subcommand>
-subcommands[${subcommands.length}]: ${subcommands.join(", ")}
-examples:
+  const flags = groupFlagHelp(name);
+  return `usage: linear-axi ${name} <subcommand> [flags]
+subcommands[${subcommands.length}]:
+  ${subcommands.join(", ")}
+${flags ? `${flags}\n` : ""}examples:
 ${(examples[name] ?? [`linear-axi ${name} list`]).map((example) => `  ${example}`).join("\n")}
 `;
+}
+
+const GROUP_FLAG_HELP = {
+  issues: [
+    "flags{list}:\n  --assignee <user>, --state <state>, --team <team>, --project <project>, --query <text>, --label <label>, --limit <n> (default 50), --fields <a,b,c>, --full",
+    "flags{view}:\n  --full (show complete description without truncation)",
+    "flags{create}:\n  --title <text> (required), --team <team> (required), --description <markdown> or --description-file <path>, --state <state>, --assignee <user>, --project <project>, --label <label>",
+    "flags{update}:\n  --id <id> (required), --title <text>, --description <markdown> or --description-file <path>, --state <state>, --assignee <user>, --project <project>, --label <label>",
+  ],
+  projects: [
+    "flags{list}:\n  --query <text>, --team <team>, --state <state>, --limit <n> (default 50), --fields <a,b,c>, --full",
+    "flags{create}:\n  --name <text> (required), --team <team> or --teamId <id> (required), --summary <text>, --description <markdown>, --status <status>, --lead <user>",
+    "flags{update}:\n  --id <id> (required), --name <text>, --team <team> or --teamId <id>, --summary <text>, --description <markdown>, --status <status>, --lead <user>",
+  ],
+  documents: [
+    "flags{list}:\n  --project <project>, --query <text>, --team <team>, --limit <n> (default 50), --fields <a,b,c>, --full",
+    "flags{view}:\n  --full (show complete content without truncation)",
+    "flags{create}:\n  --title <text> (required), --team <team>, --project <project>, --issue <issue>, --content <markdown> or --content-file <path>",
+    "flags{update}:\n  --id <id> (required), --title <text>, --team <team>, --project <project>, --issue <issue>, --content <markdown> or --content-file <path>",
+  ],
+  comments: [
+    "flags{list}:\n  --issue <id> (required), --limit <n> (default 50), --cursor <cursor>, --full",
+    "flags{create}:\n  --issue <id> (required), --body <text> or --body-file <path> (required)",
+  ],
+};
+
+function groupFlagHelp(name) {
+  return GROUP_FLAG_HELP[name]?.join("\n") ?? "";
 }
 
 function listAliasHelp(alias) {

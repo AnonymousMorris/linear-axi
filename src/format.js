@@ -36,7 +36,7 @@ function renderArray(key, array, depth) {
   const name = key === undefined ? "items" : formatKey(key);
 
   if (array.length === 0) {
-    return [`${indent}${name}[0]:`];
+    return [`${indent}${name}: []`];
   }
 
   const fields = tableFields(array);
@@ -53,7 +53,7 @@ function renderArray(key, array, depth) {
     if (key === "help") {
       const lines = [`${indent}${name}[${array.length}]:`];
       for (const item of array) {
-        lines.push(`${indent}  ${formatScalar(item)}`);
+        lines.push(`${indent}  ${formatHelpItem(item)}`);
       }
       return lines;
     }
@@ -123,6 +123,13 @@ function formatString(value) {
   if (/^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/.test(value)) return quote(value);
   if (/[\n\r\t",:#\[\]{}]|^\s|\s$/.test(value)) return quote(value);
   return value;
+}
+
+function formatHelpItem(value) {
+  return String(value)
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
 function quote(value) {

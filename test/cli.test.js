@@ -28,10 +28,66 @@ test("home auth errors suggest login before list commands", async () => {
     }),
   );
 
+  assert.match(output, /project: linear-axi/);
   assert.match(output, /error: Linear MCP OAuth authorization required/);
-  assert.match(output, /Run `linear-axi auth login` to authorize Linear MCP access/);
-  assert.match(output, /linear-axi init --project/);
-  assert.match(output, /Run `linear-axi issues list --assignee me --limit 50` to list issues/);
+  assert.match(output, /help\[1\]:\n  Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents/);
+  assert.doesNotMatch(output, /linear-axi init --project/);
+  assert.doesNotMatch(output, /issues list --assignee me --limit 50/);
+});
+
+test("home project uses .linear-project when configured", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "Roadmap" }), "utf8");
+
+  const output = await run(
+    [],
+    runtime({
+      cwd: repo,
+      callTool: async () => ({ structuredContent: { issues: [] } }),
+    }),
+  );
+
+  assert.match(output, /project: Roadmap/);
+  assert.match(output, /issues: 0 assigned to me/);
+  assert.doesNotMatch(output, /issues\[0\]/);
+  assert.match(output, /help\[1\]:/);
+});
+
+test("home summarizes assigned issues instead of listing rows", async () => {
+  const output = await run(
+    [],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          issues: [
+            { identifier: "LIN-1", title: "Fix auth" },
+            { identifier: "LIN-2", title: "Ship docs" },
+          ],
+          cursor: "next-page",
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /issues: 2\+ assigned to me/);
+  assert.doesNotMatch(output, /issues\[2\]/);
+  assert.doesNotMatch(output, /Fix auth/);
+});
+
+test("empty lists render as gh-axi-style empty arrays", async () => {
+  const output = await run(
+    ["projects", "list"],
+    runtime({
+      callTool: async () => ({ structuredContent: { projects: [] } }),
+    }),
+  );
+
+  assert.match(output, /count: 0 returned/);
+  assert.match(output, /projects: \[\]/);
+  assert.match(output, /Run `linear-axi projects create --name "\.\.\." --team "<team>"` to create a project/);
+  assert.doesNotMatch(output, /0 projects found/);
+  assert.doesNotMatch(output, /--fields/);
 });
 
 test("projects list uses list_projects wrapper", async () => {
@@ -49,6 +105,9 @@ test("projects list uses list_projects wrapper", async () => {
   assert.deepEqual(seen, { name: "list_projects", args: { query: "roadmap", limit: 50 } });
   assert.match(output, /projects\[1\]\{id,name,state\}:/);
   assert.match(output, /p1,Roadmap,started/);
+  assert.match(output, /help\[1\]:\n  Run `linear-axi projects list --fields id,name,status` to choose fields/);
+  assert.doesNotMatch(output, /--full/);
+  assert.doesNotMatch(output, /--query "<text>"/);
 });
 
 test("list commands support fields and pagination hints", async () => {
@@ -67,11 +126,12 @@ test("list commands support fields and pagination hints", async () => {
     }),
   );
 
-  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /count: 1 returned \(more available\)/);
   assert.match(output, /cursor: next-page/);
   assert.match(output, /projects\[1\]\{id,name,state\}:/);
   assert.match(output, /p1,Roadmap,started/);
   assert.doesNotMatch(output, /ignored/);
+  assert.match(output, /help\[2\]:/);
   assert.match(output, /Run `linear-axi projects list --limit 25 --query roadmap --fields 'id,name,state' --cursor next-page` to continue/);
 });
 
@@ -105,7 +165,7 @@ test("list pagination hints are emitted for cursor-only responses", async () => 
     }),
   );
 
-  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /count: 1 returned \(more available\)/);
   assert.match(output, /cursor: next-page/);
   assert.match(output, /Run `linear-axi projects list --limit 25 --cursor next-page` to continue/);
 });
@@ -456,7 +516,7 @@ test("comments list emits pagination hints", async () => {
   );
 
   assert.deepEqual(seen, { name: "list_comments", args: { issueId: "LIN-1", limit: 10, orderBy: "createdAt" } });
-  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /count: 1 returned \(more available\)/);
   assert.match(output, /cursor: next-comments/);
   assert.match(output, /comments\[1\]\{id,body\}:/);
   assert.match(output, /Run `linear-axi comments list --issue LIN-1 --limit 10 --orderBy createdAt --full --cursor next-comments` to continue/);
@@ -704,6 +764,43 @@ test("issues view compact output includes short descriptions without noisy help"
 
   assert.match(output, /description: Short body/);
   assert.doesNotMatch(output, /--full/);
+});
+
+test("issues view missing issue returns not found", async () => {
+  await assert.rejects(
+    () => run(
+      ["issues", "view", "LIN-404"],
+      runtime({
+        listTools: async () => [{ name: "get_issue" }],
+        callTool: async () => ({ structuredContent: {} }),
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "not_found");
+      assert.equal(error.code, "NOT_FOUND");
+      assert.equal(error.exitCode, 1);
+      assert.match(error.message, /issue not found: LIN-404/);
+      return true;
+    },
+  );
+});
+
+test("issues view treats blank issue-shaped responses as not found", async () => {
+  await assert.rejects(
+    () => run(
+      ["issues", "view", "LIN-404"],
+      runtime({
+        listTools: async () => [{ name: "get_issue" }],
+        callTool: async () => ({ structuredContent: { identifier: "", title: "", state: "", assignee: "" } }),
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "not_found");
+      assert.equal(error.code, "NOT_FOUND");
+      assert.match(error.message, /issue not found: LIN-404/);
+      return true;
+    },
+  );
 });
 
 test("issues view falls back to exact list match when get_issue is unavailable", async () => {
@@ -1007,7 +1104,12 @@ test("issues update rejects a missing issue before mutation", async () => {
         },
       }),
     ),
-    /issue not found: LIN-404/,
+    (error) => {
+      assert.equal(error.kind, "not_found");
+      assert.equal(error.code, "NOT_FOUND");
+      assert.match(error.message, /issue not found: LIN-404/);
+      return true;
+    },
   );
 
   assert.deepEqual(calls, [{ name: "get_issue", args: { id: "LIN-404" } }]);
@@ -1048,7 +1150,12 @@ test("projects update rejects a missing project before mutation", async () => {
         },
       }),
     ),
-    /project not found: missing/,
+    (error) => {
+      assert.equal(error.kind, "not_found");
+      assert.equal(error.code, "NOT_FOUND");
+      assert.match(error.message, /project not found: missing/);
+      return true;
+    },
   );
 
   assert.deepEqual(calls, [{ name: "list_projects", args: { query: "missing", limit: 10 } }]);
@@ -1057,8 +1164,21 @@ test("projects update rejects a missing project before mutation", async () => {
 test("resource group help is available before choosing a subcommand", async () => {
   const output = await run(["projects", "--help"], runtime({}));
 
-  assert.match(output, /usage: linear-axi projects <subcommand>/);
-  assert.match(output, /subcommands\[3\]: list, create, update/);
+  assert.match(output, /usage: linear-axi projects <subcommand> \[flags\]/);
+  assert.match(output, /subcommands\[3\]:\n  list, create, update/);
+  assert.match(output, /flags\{list\}:\n  --query <text>, --team <team>, --state <state>, --limit <n> \(default 50\), --fields <a,b,c>, --full/);
+  assert.match(output, /flags\{create\}:\n  --name <text> \(required\), --team <team> or --teamId <id> \(required\)/);
+  assert.match(output, /flags\{update\}:\n  --id <id> \(required\)/);
+});
+
+test("issue group help summarizes list view create and update flags", async () => {
+  const output = await run(["issues", "--help"], runtime({}));
+
+  assert.match(output, /flags\{list\}:/);
+  assert.match(output, /--assignee <user>.*--fields <a,b,c>.*--full/);
+  assert.match(output, /flags\{view\}:\n  --full \(show complete description without truncation\)/);
+  assert.match(output, /flags\{create\}:\n  --title <text> \(required\), --team <team> \(required\)/);
+  assert.match(output, /flags\{update\}:\n  --id <id> \(required\)/);
 });
 
 test("statuses list uses issue status tool", async () => {
@@ -1144,7 +1264,7 @@ test("statuses list emits pagination hints", async () => {
     }),
   );
 
-  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /count: 1 returned \(more available\)/);
   assert.match(output, /cursor: next-statuses/);
   assert.match(output, /statuses\[1\]\{id,name,state\}:/);
   assert.match(output, /Run `linear-axi statuses list --team ENG --limit 1 --orderBy createdAt --cursor next-statuses` to continue/);
