@@ -1,6 +1,12 @@
 # linear-axi
 
-AXI wrapper around the Linear MCP server. It keeps Linear behavior in the MCP server and adds an agent-friendly shell interface with compact TOON output.
+`linear-axi` is a command-line interface that lets coding agents work with Linear through a normal shell command. It wraps the Linear MCP server, keeps Linear-specific behavior in that server, and formats responses for agents as compact TOON instead of verbose JSON.
+
+The project follows the [AXI](https://axi.md/) pattern: an Agent eXperience Interface is a CLI designed for autonomous agents to call, parse, and recover from without interactive prompts. That means `linear-axi` favors small default schemas, structured errors, explicit next-step hints, and output that is useful as context in an agent session.
+
+Use it when you want an agent to list, inspect, create, or update Linear work from a repo without hand-driving the Linear UI or teaching the agent the raw MCP protocol.
+
+![linear-axi terminal demo](docs/demo.gif)
 
 ## Install
 
@@ -9,7 +15,9 @@ npm install
 npm link
 ```
 
-By default the CLI reads the Linear MCP URL from `[mcp_servers.linear].url` in `~/.codex/config.toml` and falls back to `https://mcp.linear.app/mcp`.
+## Configuration
+
+By default, the CLI reads the Linear MCP URL from `[mcp_servers.linear].url` in `~/.codex/config.toml` and falls back to `https://mcp.linear.app/mcp`.
 
 The default remote Linear MCP endpoint uses OAuth. Run `linear-axi auth login`, open the returned URL, and the CLI will capture the localhost callback and save tokens automatically. In a headless environment, run `linear-axi auth login --manual`, open the URL, copy the `code` from the failed localhost redirect, then finish with `linear-axi auth finish --code <code>`. Set `LINEAR_AXI_MCP_URL` to use a different MCP endpoint, or `CODEX_CONFIG` to read the URL from another Codex config file. Set `LINEAR_AXI_MCP_TOKEN` or `LINEAR_MCP_TOKEN` only when your endpoint expects a bearer token. Set `LINEAR_AXI_AUTH_FILE` to store OAuth state somewhere other than `${XDG_CONFIG_HOME:-~/.config}/linear-axi/oauth.json`.
 
@@ -25,7 +33,7 @@ This writes `.linear-project` at the Git root as JSON, for example `{ "project":
 
 ## Commands
 
-The CLI is organized as `linear-axi <resource> <action>`. Internally each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
+The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
 
 ```sh
 linear-axi
@@ -57,6 +65,8 @@ linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
 ```
 
+## Output behavior
+
 The default `linear-axi` dashboard stays compact: it shows the configured repo project, or the Git/workspace name when no project is configured, plus a count of issues assigned to you instead of listing issue rows.
 
 List commands use a compact schema by default. Empty lists render as `items: []`, counts render as `0 returned` or `1 returned (more available)`, and non-empty lists include only the field-selection hint unless a continuation cursor is available. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response.
@@ -70,4 +80,7 @@ The default Linear MCP server does not expose releases or status mutations, so `
 ```sh
 npm test
 npm run check
+npm run demo
 ```
+
+`npm run demo` renders `docs/demo.gif` from `docs/demo.tape` using [VHS](https://github.com/charmbracelet/vhs), then makes the GIF background opaque with ImageMagick. The tape uses the local executable path, so it can be regenerated from a checkout without installing `linear-axi` globally.

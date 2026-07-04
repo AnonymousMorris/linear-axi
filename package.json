@@ -4,15 +4,17 @@
   "description": "AXI wrapper for the Linear MCP server",
   "type": "module",
   "bin": {
-    "linear-axi": "bin/linear-axi.js"
+    "linear-axi": "bin/linear-axi"
   },
   "files": [
     "bin",
+    "docs",
     "src",
     "README.md"
   ],
   "scripts": {
-    "check": "node --check bin/linear-axi.js && node --check src/*.js && node --test",
+    "demo": "PATH=\"$PWD/bin:$PATH\" vhs docs/demo.tape && magick docs/demo.gif -coalesce -transparent-color '#1e1e2e' -background '#1e1e2e' -alpha background -alpha off -layers Optimize docs/demo.tmp.gif && mv docs/demo.tmp.gif docs/demo.gif",
+    "check": "node --check bin/linear-axi && node --check bin/linear-axi.js && node --check src/*.js && node --test",
     "test": "node --test"
   },
   "keywords": [],
