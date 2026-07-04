@@ -217,6 +217,10 @@ async function issueCommand(args, runtime) {
 async function createIssueCommand(args, runtime) {
   const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'issues create --title "Bug" --team ENG' });
   if (parsed.help) return issueCreateHelp();
+  rejectIdOnCreate("create", "issue", [
+    'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
+    'Run `linear-axi issues update --id LIN-123 --state "Done"` to edit an existing issue',
+  ], parsed);
   const toolArgs = collectKnownArgs(parsed, [
     "title",
     "team",
@@ -1346,7 +1350,8 @@ function collectKnownArgs(parsed, names) {
 
 function rejectIdOnCreate(subcommand, resource, help, parsed) {
   if (subcommand === "create" && parsed.id !== undefined) {
-    throw usage(`creating a ${resource} does not accept --id`, help);
+    const article = /^[aeiou]/i.test(resource) ? "an" : "a";
+    throw usage(`creating ${article} ${resource} does not accept --id`, help);
   }
 }
 

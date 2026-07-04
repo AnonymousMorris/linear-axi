@@ -765,6 +765,7 @@ test("documents create and update use create or update document tools", async ()
 
 test("explicit create commands reject id before MCP calls", async () => {
   for (const [args, message] of [
+    [["issues", "create", "--id", "LIN-1", "--title", "Task", "--team", "ENG"], /creating an issue does not accept --id/],
     [["projects", "create", "--id", "p1", "--name", "Roadmap", "--team", "ENG"], /creating a project does not accept --id/],
     [["documents", "create", "--id", "doc1", "--title", "Spec"], /creating a document does not accept --id/],
     [["milestones", "create", "--project", "Roadmap", "--id", "m1", "--name", "Beta"], /creating a milestone does not accept --id/],
