@@ -199,10 +199,11 @@ test("repo project default applies to issue creates but not updates", async () =
 
   let seen;
   await run(
-    ["issues", "save", "--title", "Fix auth", "--team", "ENG"],
+    ["issues", "create", "--title", "Fix auth", "--team", "ENG"],
     runtime({
       cwd: repo,
       callTool: async (name, args) => {
+        if (name === "list_issues") return { structuredContent: { issues: [] } };
         seen = { name, args };
         return { structuredContent: { identifier: "LIN-1", title: "Fix auth" } };
       },
@@ -212,10 +213,12 @@ test("repo project default applies to issue creates but not updates", async () =
   assert.deepEqual(seen, { name: "save_issue", args: { title: "Fix auth", team: "ENG", project: "Roadmap" } });
 
   await run(
-    ["issues", "save", "--id", "LIN-1", "--state", "Done"],
+    ["issues", "update", "--id", "LIN-1", "--state", "Done"],
     runtime({
       cwd: repo,
+      listTools: async () => [{ name: "get_issue" }],
       callTool: async (name, args) => {
+        if (name === "get_issue") return { structuredContent: { identifier: "LIN-1", title: "Fix auth" } };
         seen = { name, args };
         return { structuredContent: { identifier: "LIN-1", title: "Fix auth" } };
       },
@@ -232,7 +235,7 @@ test("repo project default applies to document creates but not updates", async (
 
   let seen;
   await run(
-    ["documents", "save", "--title", "Spec"],
+    ["documents", "create", "--title", "Spec"],
     runtime({
       cwd: repo,
       listTools: async () => [{ name: "create_document" }, { name: "update_document" }],
@@ -246,11 +249,12 @@ test("repo project default applies to document creates but not updates", async (
   assert.deepEqual(seen, { name: "create_document", args: { title: "Spec", project: "Roadmap" } });
 
   await run(
-    ["documents", "save", "--id", "doc1", "--title", "Updated"],
+    ["documents", "update", "--id", "doc1", "--title", "Updated"],
     runtime({
       cwd: repo,
-      listTools: async () => [{ name: "create_document" }, { name: "update_document" }],
+      listTools: async () => [{ name: "create_document" }, { name: "update_document" }, { name: "get_document" }],
       callTool: async (name, args) => {
+        if (name === "get_document") return { structuredContent: { id: "doc1", title: "Spec" } };
         seen = { name, args };
         return { structuredContent: { id: "doc1", title: "Updated" } };
       },
@@ -260,14 +264,14 @@ test("repo project default applies to document creates but not updates", async (
   assert.deepEqual(seen, { name: "update_document", args: { id: "doc1", title: "Updated" } });
 });
 
-test("repo project default applies to milestone creates but not updates", async () => {
+test("repo project default applies to milestone creates and updates use explicit projects", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));
   await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
 
   let seen;
   await run(
-    ["milestones", "save", "--name", "Beta"],
+    ["milestones", "create", "--name", "Beta"],
     runtime({
       cwd: repo,
       callTool: async (name, args) => {
@@ -280,17 +284,18 @@ test("repo project default applies to milestone creates but not updates", async 
   assert.deepEqual(seen, { name: "save_milestone", args: { name: "Beta", project: "Roadmap" } });
 
   await run(
-    ["milestones", "save", "--id", "m1", "--targetDate", "2026-09-01"],
+    ["milestones", "update", "--project", "Roadmap", "--id", "m1", "--targetDate", "2026-09-01"],
     runtime({
       cwd: repo,
       callTool: async (name, args) => {
+        if (name === "get_milestone") return { structuredContent: { id: "m1", name: "Beta" } };
         seen = { name, args };
         return { structuredContent: { id: "m1", name: "Beta" } };
       },
     }),
   );
 
-  assert.deepEqual(seen, { name: "save_milestone", args: { id: "m1", targetDate: "2026-09-01" } });
+  assert.deepEqual(seen, { name: "save_milestone", args: { id: "m1", project: "Roadmap", targetDate: "2026-09-01" } });
 });
 
 test("repo project discovery walks up from a subdirectory and explicit project wins", async () => {
@@ -346,12 +351,14 @@ test("init is idempotent and protects existing project values", async () => {
   assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { project: "Other" });
 });
 
-test("comments save uses comment-oriented flags", async () => {
+test("comments create uses comment-oriented flags", async () => {
   let seen;
   const output = await run(
-    ["comments", "save", "--issue", "LIN-1", "--body", "Ready"],
+    ["comments", "create", "--issue", "LIN-1", "--body", "Ready"],
     runtime({
+      listTools: async () => [{ name: "get_issue" }],
       callTool: async (name, args) => {
+        if (name === "get_issue") return { structuredContent: { identifier: "LIN-1", title: "Task" } };
         seen = { name, args };
         return { structuredContent: { id: "c1", body: "Ready" } };
       },
@@ -363,19 +370,23 @@ test("comments save uses comment-oriented flags", async () => {
   assert.match(output, /id: c1/);
 });
 
-test("comments save returns compact preview output", async () => {
+test("comments create returns compact preview output", async () => {
   const output = await run(
-    ["comments", "save", "--issue", "LIN-1", "--body", "Ready"],
+    ["comments", "create", "--issue", "LIN-1", "--body", "Ready"],
     runtime({
-      callTool: async () => ({
-        structuredContent: {
-          id: "c1",
-          body: "a".repeat(121),
-          author: { name: "Morris" },
-          createdAt: "2026-07-04T12:00:00Z",
-          metadata: "hidden",
-        },
-      }),
+      listTools: async () => [{ name: "get_issue" }],
+      callTool: async (name) => {
+        if (name === "get_issue") return { structuredContent: { identifier: "LIN-1", title: "Task" } };
+        return {
+          structuredContent: {
+            id: "c1",
+            body: "a".repeat(121),
+            author: { name: "Morris" },
+            createdAt: "2026-07-04T12:00:00Z",
+            metadata: "hidden",
+          },
+        };
+      },
     }),
   );
 
@@ -389,12 +400,16 @@ test("comments save returns compact preview output", async () => {
   assert.match(output, /Run `linear-axi comments list --issue LIN-1 --full` to show complete comment bodies/);
 });
 
-test("comments save treats text-only mutation responses as errors", async () => {
+test("comments create treats text-only mutation responses as errors", async () => {
   await assert.rejects(
     () => run(
-      ["comments", "save", "--issue", "LIN-1", "--body", "Ready"],
+      ["comments", "create", "--issue", "LIN-1", "--body", "Ready"],
       runtime({
-        callTool: async () => ({ structuredContent: { text: "Issue not found" } }),
+        listTools: async () => [{ name: "get_issue" }],
+        callTool: async (name) => {
+          if (name === "get_issue") return { structuredContent: { identifier: "LIN-1", title: "Task" } };
+          return { structuredContent: { text: "Issue not found" } };
+        },
       }),
     ),
     (error) => {
@@ -494,19 +509,19 @@ test("comments reject unsupported parent flags before MCP calls", async () => {
     /--project is not supported for comments/,
   );
   await assert.rejects(
-    () => run(["comments", "save", "--parentId", "comment-id", "--body", "Reply"], client),
+    () => run(["comments", "create", "--parentId", "comment-id", "--body", "Reply"], client),
     /--parentId is not supported for comments/,
   );
 
   assert.equal(called, false);
 });
 
-test("comments save requires an issue", async () => {
+test("comments create requires an issue", async () => {
   let called = false;
 
   await assert.rejects(
     () => run(
-      ["comments", "save", "--body", "Ready"],
+      ["comments", "create", "--body", "Ready"],
       runtime({
         callTool: async () => {
           called = true;
@@ -514,7 +529,7 @@ test("comments save requires an issue", async () => {
         },
       }),
     ),
-    /comments save requires --issue/,
+    /comments create requires --issue/,
   );
 
   assert.equal(called, false);
@@ -543,7 +558,7 @@ test("numeric flags reject invalid finite numbers before MCP calls", async () =>
 
   await assert.rejects(
     () => run(
-      ["issues", "save", "--title", "Task", "--team", "ENG", "--priority", "Infinity"],
+      ["issues", "create", "--title", "Task", "--team", "ENG", "--priority", "Infinity"],
       runtime({
         callTool: async () => {
           called = true;
@@ -718,10 +733,10 @@ test("issues view all is rejected instead of returning an empty detail", async (
   assert.equal(called, false);
 });
 
-test("documents save uses create or update document tools", async () => {
+test("documents create and update use create or update document tools", async () => {
   let seen;
   await run(
-    ["documents", "save", "--title", "Spec"],
+    ["documents", "create", "--title", "Spec"],
     runtime({
       listTools: async () => [{ name: "create_document" }, { name: "update_document" }],
       callTool: async (name, args) => {
@@ -734,10 +749,11 @@ test("documents save uses create or update document tools", async () => {
   assert.deepEqual(seen, { name: "create_document", args: { title: "Spec" } });
 
   await run(
-    ["documents", "save", "--id", "doc1", "--content", "Updated"],
+    ["documents", "update", "--id", "doc1", "--content", "Updated"],
     runtime({
-      listTools: async () => [{ name: "create_document" }, { name: "update_document" }],
+      listTools: async () => [{ name: "get_document" }, { name: "create_document" }, { name: "update_document" }],
       callTool: async (name, args) => {
+        if (name === "get_document") return { structuredContent: { id: "doc1", title: "Spec" } };
         seen = { name, args };
         return { structuredContent: { id: "doc1", title: "Spec" } };
       },
@@ -772,9 +788,9 @@ test("documents view uses get_document and rewrites MCP-native truncation hints"
   assert.doesNotMatch(output, /get_document/);
 });
 
-test("documents save returns compact mutation output", async () => {
+test("documents create returns compact mutation output", async () => {
   const output = await run(
-    ["documents", "save", "--title", "Spec", "--team", "ENG", "--content", "Body"],
+    ["documents", "create", "--title", "Spec", "--team", "ENG", "--content", "Body"],
     runtime({
       listTools: async () => [{ name: "create_document" }],
       callTool: async () => ({ structuredContent: { id: "doc1", title: "Spec", content: "Body", url: "https://linear/doc1", extra: "hidden" } }),
@@ -788,13 +804,14 @@ test("documents save returns compact mutation output", async () => {
   assert.match(output, /linear-axi documents view doc1/);
 });
 
-test("projects save wraps create_project and returns compact output", async () => {
+test("projects create wraps create_project and returns compact output", async () => {
   let seen;
   const output = await run(
-    ["projects", "save", "--name", "Roadmap", "--team", "ENG", "--summary", "Plan"],
+    ["projects", "create", "--name", "Roadmap", "--team", "ENG", "--summary", "Plan"],
     runtime({
       listTools: async () => [{ name: "create_project" }],
       callTool: async (name, args) => {
+        if (name === "list_projects") return { structuredContent: { projects: [] } };
         seen = { name, args };
         return { structuredContent: { id: "p1", name: "Roadmap", status: { name: "Planned" }, team: { name: "ENG" }, extra: "hidden" } };
       },
@@ -807,13 +824,14 @@ test("projects save wraps create_project and returns compact output", async () =
   assert.doesNotMatch(output, /extra/);
 });
 
-test("projects save maps team when falling back to save_project create shape", async () => {
+test("projects create maps team when falling back to save_project create shape", async () => {
   let seen;
   const output = await run(
-    ["projects", "save", "--name", "Roadmap", "--team", "ENG", "--summary", "Plan"],
+    ["projects", "create", "--name", "Roadmap", "--team", "ENG", "--summary", "Plan"],
     runtime({
       listTools: async () => [{ name: "save_project" }],
       callTool: async (name, args) => {
+        if (name === "list_projects") return { structuredContent: { projects: [] } };
         seen = { name, args };
         return { structuredContent: { id: "p1", name: "Roadmap", status: { name: "Planned" }, teams: [{ name: "ENG" }] } };
       },
@@ -825,12 +843,13 @@ test("projects save maps team when falling back to save_project create shape", a
   assert.match(output, /team: ENG/);
 });
 
-test("projects save maps team when retrying unknown create_project with save_project", async () => {
+test("projects create maps team when retrying unknown create_project with save_project", async () => {
   const seen = [];
   await run(
-    ["projects", "save", "--name", "Roadmap", "--teamId", "team-1", "--summary", "Plan"],
+    ["projects", "create", "--name", "Roadmap", "--teamId", "team-1", "--summary", "Plan"],
     runtime({
       callTool: async (name, args) => {
+        if (name === "list_projects") return { structuredContent: { projects: [] } };
         seen.push({ name, args });
         if (name === "create_project") throw new Error("unknown tool: create_project");
         return { structuredContent: { id: "p1", name: "Roadmap" } };
@@ -844,13 +863,14 @@ test("projects save maps team when retrying unknown create_project with save_pro
   ]);
 });
 
-test("projects save maps team when update falls back to save_project", async () => {
+test("projects update maps team when update falls back to save_project", async () => {
   let seen;
   await run(
-    ["projects", "save", "--id", "p1", "--team", "ENG", "--summary", "Plan"],
+    ["projects", "update", "--id", "p1", "--team", "ENG", "--summary", "Plan"],
     runtime({
       listTools: async () => [{ name: "save_project" }],
       callTool: async (name, args) => {
+        if (name === "list_projects") return { structuredContent: { projects: [{ id: "p1", name: "Roadmap" }] } };
         seen = { name, args };
         return { structuredContent: { id: "p1", name: "Roadmap" } };
       },
@@ -860,10 +880,10 @@ test("projects save maps team when update falls back to save_project", async () 
   assert.deepEqual(seen, { name: "save_project", args: { id: "p1", summary: "Plan", addTeams: ["ENG"] } });
 });
 
-test("milestones save treats text-only mutation responses as errors", async () => {
+test("milestones create treats text-only mutation responses as errors", async () => {
   await assert.rejects(
     () => run(
-      ["milestones", "save", "--project", "Roadmap", "--name", "Beta"],
+      ["milestones", "create", "--project", "Roadmap", "--name", "Beta"],
       runtime({
         callTool: async () => ({ structuredContent: { text: "Milestone name is required" } }),
       }),
@@ -880,20 +900,115 @@ test("milestones save treats text-only mutation responses as errors", async () =
 test("mutation text responses become structured errors", async () => {
   await assert.rejects(
     () => run(
-      ["issues", "save", "--title", "Task", "--team", "ENG", "--project", "Wrong"],
+      ["issues", "create", "--title", "Task", "--team", "ENG", "--project", "Wrong"],
       runtime({
-        callTool: async () => ({ structuredContent: { text: "Project not in same team as issue" } }),
+        callTool: async (name) => {
+          if (name === "list_issues") return { structuredContent: { issues: [] } };
+          return { structuredContent: { text: "Project not in same team as issue" } };
+        },
       }),
     ),
     /Project not in same team as issue/,
   );
 });
 
+test("issues create rejects an existing issue before mutation", async () => {
+  let mutated = false;
+
+  await assert.rejects(
+    () => run(
+      ["issues", "create", "--title", "Task", "--team", "ENG"],
+      runtime({
+        callTool: async (name) => {
+          if (name === "list_issues") {
+            return { structuredContent: { issues: [{ identifier: "LIN-1", title: "Task", team: { key: "ENG" } }] } };
+          }
+          mutated = true;
+          return {};
+        },
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "operational");
+      assert.match(error.message, /issue already exists: LIN-1 Task/);
+      assert.deepEqual(error.help, [
+        "Run `linear-axi issues view LIN-1` to inspect the existing issue",
+        'Run `linear-axi issues update --id LIN-1 --state "<state>"` to edit it',
+        "Run `linear-axi issues create --title 'Task copy' --team ENG` to create a distinct issue",
+      ]);
+      return true;
+    },
+  );
+
+  assert.equal(mutated, false);
+});
+
+test("issues update rejects a missing issue before mutation", async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () => run(
+      ["issues", "update", "--id", "LIN-404", "--state", "Done"],
+      runtime({
+        listTools: async () => [{ name: "get_issue" }],
+        callTool: async (name, args) => {
+          calls.push({ name, args });
+          return { structuredContent: {} };
+        },
+      }),
+    ),
+    /issue not found: LIN-404/,
+  );
+
+  assert.deepEqual(calls, [{ name: "get_issue", args: { id: "LIN-404" } }]);
+});
+
+test("projects create rejects an existing project before mutation", async () => {
+  let mutated = false;
+
+  await assert.rejects(
+    () => run(
+      ["projects", "create", "--name", "Roadmap", "--team", "ENG"],
+      runtime({
+        callTool: async (name) => {
+          if (name === "list_projects") {
+            return { structuredContent: { projects: [{ id: "p1", name: "Roadmap", team: { key: "ENG" } }] } };
+          }
+          mutated = true;
+          return {};
+        },
+      }),
+    ),
+    /project already exists: p1 Roadmap/,
+  );
+
+  assert.equal(mutated, false);
+});
+
+test("projects update rejects a missing project before mutation", async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () => run(
+      ["projects", "update", "--id", "missing", "--summary", "Plan"],
+      runtime({
+        callTool: async (name, args) => {
+          calls.push({ name, args });
+          return { structuredContent: { projects: [] } };
+        },
+      }),
+    ),
+    /project not found: missing/,
+  );
+
+  assert.deepEqual(calls, [{ name: "list_projects", args: { query: "missing", limit: 10 } }]);
+});
+
 test("resource group help is available before choosing a subcommand", async () => {
   const output = await run(["projects", "--help"], runtime({}));
 
   assert.match(output, /usage: linear-axi projects <subcommand>/);
-  assert.match(output, /subcommands\[2\]: list, save/);
+  assert.match(output, /subcommands\[3\]: list, create, update/);
 });
 
 test("statuses list uses issue status tool", async () => {
