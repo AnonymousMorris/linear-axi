@@ -385,7 +385,11 @@ async function commentCommand(args, runtime) {
       throw usage("--body or --body-file is required", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
     }
     const result = await runtime.client.callTool("save_comment", toolArgs);
-    return renderToon({ comment: extractData(result) });
+    const comment = mutationData(result, [
+      'Run `linear-axi comments save --issue LIN-123 --body "Ready"`',
+      `Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)}\` to verify comments`,
+    ]);
+    return renderToon({ comment });
   }
   throw usage(`unknown comments command: ${subcommand}`, ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments save --issue LIN-123 --body \"...\"`"]);
 }
@@ -413,7 +417,11 @@ async function milestoneCommand(args, runtime) {
     if (parsed.help) return milestoneSaveHelp();
     if (!parsed.project) throw usage("--project is required", ['Run `linear-axi milestones save --project "<project>" --name "<name>"`']);
     const result = await runtime.client.callTool("save_milestone", collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]));
-    return renderToon({ milestone: extractData(result) });
+    const milestone = mutationData(result, [
+      'Run `linear-axi milestones save --project "<project>" --name "<name>"`',
+      'Run `linear-axi milestones list --project "<project>"` to verify milestones',
+    ]);
+    return renderToon({ milestone });
   }
   throw usage(`unknown milestones command: ${subcommand}`, ["Run `linear-axi milestones list --project <project>`"]);
 }

@@ -180,6 +180,23 @@ test("comments save uses comment-oriented flags", async () => {
   assert.match(output, /id: c1/);
 });
 
+test("comments save treats text-only mutation responses as errors", async () => {
+  await assert.rejects(
+    () => run(
+      ["comments", "save", "--issue", "LIN-1", "--body", "Ready"],
+      runtime({
+        callTool: async () => ({ structuredContent: { text: "Issue not found" } }),
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "operational");
+      assert.equal(error.exitCode, 1);
+      assert.match(error.message, /Issue not found/);
+      return true;
+    },
+  );
+});
+
 test("comments list accepts bare full flag", async () => {
   let seen;
   const output = await run(
@@ -595,6 +612,23 @@ test("projects save maps team when update falls back to save_project", async () 
   );
 
   assert.deepEqual(seen, { name: "save_project", args: { id: "p1", summary: "Plan", addTeams: ["ENG"] } });
+});
+
+test("milestones save treats text-only mutation responses as errors", async () => {
+  await assert.rejects(
+    () => run(
+      ["milestones", "save", "--project", "Roadmap", "--name", "Beta"],
+      runtime({
+        callTool: async () => ({ structuredContent: { text: "Milestone name is required" } }),
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "operational");
+      assert.equal(error.exitCode, 1);
+      assert.match(error.message, /Milestone name is required/);
+      return true;
+    },
+  );
 });
 
 test("mutation text responses become structured errors", async () => {
