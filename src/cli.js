@@ -355,7 +355,7 @@ async function statusCommand(args, runtime) {
     if (parsed.help) return statusListHelp();
     const team = parsed.teamId ?? parsed.team;
     if (!team) throw usage("--team is required", ["Run `linear-axi statuses list --team <team>`"]);
-    const result = await callAvailableTool(runtime, ["list_issue_statuses", "get_status_updates"], collectKnownArgs(parsed, ["team", "teamId", "type", "project", "initiative", "user", "limit", "cursor", "orderBy", "createdAt", "updatedAt", "includeArchived"]));
+    const result = await callAvailableTool(runtime, ["list_issue_statuses"], collectKnownArgs(parsed, ["team", "teamId", "type", "project", "initiative", "user", "limit", "cursor", "orderBy", "createdAt", "updatedAt", "includeArchived"]));
     return renderToon({ statuses: parsed.full ? extractData(result) : compactRows("statuses", extractData(result)) });
   }
   if (subcommand === "save") {

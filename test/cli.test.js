@@ -374,6 +374,46 @@ test("statuses list uses issue status tool", async () => {
   assert.deepEqual(seen, { name: "list_issue_statuses", args: { team: "ENG" } });
 });
 
+test("statuses list does not fall back to status update tool", async () => {
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["statuses", "list", "--team", "ENG"],
+      runtime({
+        listTools: async () => [{ name: "get_status_updates" }],
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /Linear MCP server does not expose list_issue_statuses/,
+  );
+
+  assert.equal(called, false);
+});
+
+test("statuses list surfaces missing issue status tool without fallback", async () => {
+  let calls = 0;
+
+  await assert.rejects(
+    () => run(
+      ["statuses", "list", "--team", "ENG"],
+      runtime({
+        callTool: async (name) => {
+          calls += 1;
+          assert.equal(name, "list_issue_statuses");
+          throw new Error("unknown tool: list_issue_statuses");
+        },
+      }),
+    ),
+    /unknown tool: list_issue_statuses/,
+  );
+
+  assert.equal(calls, 1);
+});
+
 test("statuses list compacts status arrays from envelope", async () => {
   const output = await run(
     ["statuses", "list", "--team", "ENG"],
