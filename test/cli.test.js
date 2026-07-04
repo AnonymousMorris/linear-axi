@@ -105,6 +105,24 @@ test("list pagination hints are emitted for cursor-only responses", async () => 
   assert.match(output, /Run `linear-axi projects list --limit 25 --cursor next-page` to continue/);
 });
 
+test("list pagination hints preserve false boolean filters", async () => {
+  const output = await run(
+    ["projects", "list", "--limit", "25", "--includeArchived=false", "--full=false"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          projects: [{ id: "p1", name: "Roadmap" }],
+          pageInfo: { hasNextPage: true, endCursor: "next-page" },
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /Run `linear-axi projects list --limit 25 --includeArchived=false --full=false --cursor next-page` to continue/);
+  assert.doesNotMatch(output, /--includeArchived false/);
+  assert.doesNotMatch(output, /--full false/);
+});
+
 test("list full counts rows inside response envelopes", async () => {
   const output = await run(
     ["projects", "list", "--full"],
@@ -201,6 +219,23 @@ test("comments list emits pagination hints", async () => {
   assert.match(output, /cursor: next-comments/);
   assert.match(output, /comments\[1\]\{id,body\}:/);
   assert.match(output, /Run `linear-axi comments list --issue LIN-1 --limit 10 --orderBy createdAt --full --cursor next-comments` to continue/);
+});
+
+test("comments list pagination hints preserve false full flag", async () => {
+  const output = await run(
+    ["comments", "list", "--issue", "LIN-1", "--limit", "10", "--full=false"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          comments: [{ id: "c1", body: "Ready" }],
+          pageInfo: { hasNextPage: true, endCursor: "next-comments" },
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --limit 10 --full=false --cursor next-comments` to continue/);
+  assert.doesNotMatch(output, /--full false/);
 });
 
 test("comments list marks truncated bodies and shows full escape hatch", async () => {

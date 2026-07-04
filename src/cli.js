@@ -786,6 +786,10 @@ function appendFlag(parts, name, value) {
     parts.push(`--${name}`);
     return;
   }
+  if (value === false) {
+    parts.push(`--${name}=false`);
+    return;
+  }
   parts.push(`--${name}`, formatCommandArg(value));
 }
 
