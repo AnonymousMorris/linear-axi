@@ -85,6 +85,46 @@ test("comments list accepts bare full flag", async () => {
   assert.match(output, /c1,Ready,kept/);
 });
 
+test("comments reject unsupported parent flags before MCP calls", async () => {
+  let called = false;
+  const client = runtime({
+    callTool: async () => {
+      called = true;
+      return {};
+    },
+  });
+
+  await assert.rejects(
+    () => run(["comments", "list", "--project", "Roadmap"], client),
+    /--project is not supported for comments/,
+  );
+  await assert.rejects(
+    () => run(["comments", "save", "--parentId", "comment-id", "--body", "Reply"], client),
+    /--parentId is not supported for comments/,
+  );
+
+  assert.equal(called, false);
+});
+
+test("comments save requires an issue", async () => {
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["comments", "save", "--body", "Ready"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /comments save requires --issue/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("issues view full returns only matching issue detail", async () => {
   const calls = [];
   const output = await run(

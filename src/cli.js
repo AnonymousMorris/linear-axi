@@ -243,25 +243,32 @@ async function commentCommand(args, runtime) {
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "comments list --issue LIN-123" });
     if (parsed.help) return commentListHelp();
-    const toolArgs = parentArgs(parsed);
+    rejectUnsupportedCommentFlags(parsed);
+    if (!parsed.issue) {
+      throw usage("comments list requires --issue", ["Run `linear-axi comments list --issue LIN-123`"]);
+    }
+    const toolArgs = { issueId: parsed.issue };
     toolArgs.limit = Number(parsed.limit ?? DEFAULT_LIMIT);
     if (parsed.cursor) toolArgs.cursor = parsed.cursor;
     if (parsed.orderBy) toolArgs.orderBy = parsed.orderBy;
-    requireOneParent(toolArgs, "comments list");
     const result = await runtime.client.callTool("list_comments", toolArgs);
     return renderToon({ comments: parsed.full ? extractData(result) : compactComments(extractData(result)) });
   }
   if (subcommand === "save") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'comments save --issue LIN-123 --body "Ready"' });
     if (parsed.help) return commentSaveHelp();
-    const toolArgs = parentArgs(parsed);
-    if (parsed.id) toolArgs.id = parsed.id;
-    if (parsed.parentId) toolArgs.parentId = parsed.parentId;
+    rejectUnsupportedCommentFlags(parsed);
+    if (parsed.id) {
+      throw usage("comments save supports issue comments only", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
+    }
+    if (!parsed.issue) {
+      throw usage("comments save requires --issue", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
+    }
+    const toolArgs = { issueId: parsed.issue };
     toolArgs.body = parsed.body ?? (parsed["body-file"] ? await readTextFlag(parsed["body-file"], runtime.cwd) : undefined);
     if (!toolArgs.body) {
       throw usage("--body or --body-file is required", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
     }
-    if (!toolArgs.id && !toolArgs.parentId) requireOneParent(toolArgs, "comments save");
     const result = await runtime.client.callTool("save_comment", toolArgs);
     return renderToon({ comment: extractData(result) });
   }
@@ -473,27 +480,13 @@ function asArray(data) {
   return [];
 }
 
-function parentArgs(parsed) {
-  return {
-    ...(parsed.issue ? { issueId: parsed.issue } : {}),
-    ...(parsed.issueId ? { issueId: parsed.issueId } : {}),
-    ...(parsed.project ? { projectId: parsed.project } : {}),
-    ...(parsed.projectId ? { projectId: parsed.projectId } : {}),
-    ...(parsed.initiative ? { initiativeId: parsed.initiative } : {}),
-    ...(parsed.initiativeId ? { initiativeId: parsed.initiativeId } : {}),
-    ...(parsed.document ? { documentId: parsed.document } : {}),
-    ...(parsed.documentId ? { documentId: parsed.documentId } : {}),
-    ...(parsed.milestone ? { milestoneId: parsed.milestone } : {}),
-    ...(parsed.milestoneId ? { milestoneId: parsed.milestoneId } : {}),
-  };
-}
-
-function requireOneParent(toolArgs, command) {
-  const count = ["issueId", "projectId", "initiativeId", "documentId", "milestoneId"].filter((key) => toolArgs[key]).length;
-  if (count !== 1) {
-    throw usage(`${command} requires exactly one parent`, [
-      `Run \`linear-axi ${command} --issue LIN-123\``,
-      `Run \`linear-axi ${command} --project "<project>"\``,
+function rejectUnsupportedCommentFlags(parsed) {
+  const unsupported = ["issueId", "project", "projectId", "initiative", "initiativeId", "document", "documentId", "milestone", "milestoneId", "parentId"]
+    .find((name) => parsed[name] !== undefined);
+  if (unsupported) {
+    throw usage(`--${unsupported} is not supported for comments`, [
+      "Run `linear-axi comments list --issue LIN-123`",
+      'Run `linear-axi comments save --issue LIN-123 --body "Ready"`',
     ]);
   }
 }
@@ -586,21 +579,19 @@ examples:
 }
 
 function commentListHelp() {
-  return `usage: linear-axi comments list (--issue <id> | --project <id> | --initiative <id> | --document <id> | --milestone <id>)
+  return `usage: linear-axi comments list --issue <id>
 flags:
   --limit <n> default ${DEFAULT_LIMIT}
   --orderBy createdAt|updatedAt
 examples:
   linear-axi comments list --issue LIN-123
-  linear-axi comments list --project "Roadmap" --limit 100
 `;
 }
 
 function commentSaveHelp() {
-  return `usage: linear-axi comments save (--issue <id> | --project <id> | --parentId <id>) (--body <text> | --body-file <path>)
+  return `usage: linear-axi comments save --issue <id> (--body <text> | --body-file <path>)
 examples:
   linear-axi comments save --issue LIN-123 --body "Ready for review."
-  linear-axi comments save --parentId <comment-id> --body-file reply.md
 `;
 }
 
