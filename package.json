@@ -1,0 +1,24 @@
+{
+  "name": "linear-axi",
+  "version": "0.1.0",
+  "description": "AXI wrapper for the Linear MCP server",
+  "type": "module",
+  "bin": {
+    "linear-axi": "bin/linear-axi.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check bin/linear-axi.js && node --check src/*.js && node --test",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}
