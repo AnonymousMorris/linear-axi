@@ -1,11 +1,49 @@
 import { realpathSync } from "node:fs";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import { parseFlags, AxiError, usage } from "./args.js";
 import { collapseHome, resolveMcpUrl } from "./config.js";
 import { renderToon } from "./format.js";
 import { LinearMcpClient } from "./mcp.js";
+import {
+  collectKnownArgs,
+  continuationCommand,
+  formatCommandArg,
+  parseFiniteNumber,
+  readTextFlag,
+  rejectIdOnCreate,
+} from "./lib/cli-helpers.js";
+import {
+  compactCommentMutation,
+  compactComments,
+  compactDocumentDetail,
+  compactDocumentMutation,
+  compactIssueDetail,
+  compactIssueMutation,
+  compactIssues,
+  compactProjectMutation,
+  compactRows,
+  fieldHint,
+  paginationInfo,
+  parseFields,
+  sanitizeDocument,
+  selectFields,
+} from "./lib/linear-format.js";
+import {
+  asArray,
+  callAvailableTool,
+  extractData,
+  isUnknownToolError,
+  mutationData,
+} from "./lib/mcp-tools.js";
+import {
+  applyRepoProjectDefault,
+  findGitRoot,
+  readProjectFile,
+  readRepoProject,
+  withRepoProject,
+} from "./lib/repo-project.js";
 
 const DEFAULT_LIMIT = 50;
 const LIST_TOOL_ALIASES = {
@@ -869,30 +907,6 @@ async function ensureProjectDoesNotExist(name, team, runtime) {
   ]);
 }
 
-async function callAvailableTool(runtime, candidates, args) {
-  const tools = typeof runtime.client.listTools === "function" ? await runtime.client.listTools() : [];
-  const names = new Set(tools.map((tool) => tool.name));
-  if (names.size > 0 && !candidates.some((candidate) => names.has(candidate))) {
-    throw new ToolUnavailableError(candidates);
-  }
-  const preferred = candidates.find((candidate) => names.has(candidate)) ?? candidates[0];
-  const argsFor = typeof args === "function" ? args : () => args;
-  try {
-    return await runtime.client.callTool(preferred, argsFor(preferred));
-  } catch (error) {
-    if (!isUnknownToolError(error)) throw error;
-    for (const candidate of candidates) {
-      if (candidate === preferred) continue;
-      try {
-        return await runtime.client.callTool(candidate, argsFor(candidate));
-      } catch (candidateError) {
-        if (!isUnknownToolError(candidateError)) throw candidateError;
-      }
-    }
-    throw error;
-  }
-}
-
 function projectSaveToolArgs(toolName, args) {
   if (toolName !== "save_project") return args;
   const { team, teamId, ...projectArgs } = args;
@@ -902,119 +916,6 @@ function projectSaveToolArgs(toolName, args) {
     ...projectArgs,
     [projectArgs.id ? "addTeams" : "setTeams"]: [teamRef],
   };
-}
-
-async function applyRepoProjectDefault(toolArgs, runtime) {
-  if (toolArgs.project !== undefined) return;
-  const repoProject = await readRepoProject(runtime.cwd);
-  if (repoProject) toolArgs.project = repoProject.project;
-}
-
-function withRepoProject(toolArgs, repoProject) {
-  if (!repoProject || toolArgs.project !== undefined) return toolArgs;
-  return { ...toolArgs, project: repoProject.project };
-}
-
-async function readRepoProject(cwd) {
-  const repo = await findGitRoot(cwd);
-  if (!repo) return null;
-  return readProjectFile(join(repo, ".linear-project"));
-}
-
-async function readProjectFile(path) {
-  let text;
-  try {
-    text = await readFile(path, "utf8");
-  } catch {
-    return null;
-  }
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed === "object" && typeof parsed.project === "string" && parsed.project.trim()) {
-      return { project: parsed.project.trim() };
-    }
-  } catch {
-    if (!trimmed.includes("\n") && !/^\s*[\[{]/.test(trimmed)) return { project: trimmed };
-  }
-  throw usage(".linear-project must contain JSON with a project string", [
-    'Run `linear-axi init --project "<project>" --force` to repair it',
-  ]);
-}
-
-async function findGitRoot(cwd) {
-  let current = resolve(cwd);
-  while (true) {
-    if (await pathExists(join(current, ".git"))) return current;
-    const parent = dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
-}
-
-async function pathExists(path) {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isUnknownToolError(error) {
-  if (error?.toolUnavailable) return true;
-  const message = error && typeof error.message === "string" ? error.message : String(error);
-  return /unknown tool|tool .*not found|method not found|not found.*tool/i.test(message);
-}
-
-class ToolUnavailableError extends Error {
-  constructor(candidates) {
-    super(`Linear MCP server does not expose ${candidates.join(" or ")}`);
-    this.toolUnavailable = true;
-  }
-}
-
-function compactRows(alias, data) {
-  if (alias === "issues") return compactIssues(data);
-  return asArray(data).map((item) => ({
-    id: item.id ?? item.identifier ?? item.key ?? item.slug ?? item.name ?? "",
-    name: item.name ?? item.title ?? item.displayName ?? item.email ?? "",
-    state: item.state?.name ?? item.status?.name ?? item.state ?? item.status ?? "",
-  }));
-}
-
-function parseFields(fields) {
-  return fields.split(",").map((field) => field.trim()).filter(Boolean);
-}
-
-function fieldHint(publicName) {
-  if (publicName === "issues") return "id,title,state,assignee";
-  if (publicName === "documents") return "id,title,updatedAt";
-  if (publicName === "projects") return "id,name,status";
-  if (publicName === "teams") return "id,name,key";
-  if (publicName === "users") return "id,name,email";
-  return "id,name,state";
-}
-
-function selectFields(items, fields) {
-  return items.map((item) => {
-    const selected = {};
-    for (const field of fields) {
-      selected[field] = fieldValue(item, field);
-    }
-    return selected;
-  });
-}
-
-function fieldValue(item, field) {
-  const value = field.split(".").reduce((current, part) => current?.[part], item);
-  if (value === undefined) return "";
-  if (value === null) return null;
-  if (typeof value === "object") {
-    return value.name ?? value.displayName ?? value.identifier ?? value.id ?? JSON.stringify(value);
-  }
-  return value;
 }
 
 const LIST_CONTINUATION_FLAGS = [
@@ -1065,152 +966,6 @@ const COMMENT_CONTINUATION_FLAGS = [
   "orderBy",
   "full",
 ];
-
-function continuationCommand(baseCommand, parsed, flagNames, cursor) {
-  const parts = [baseCommand];
-  for (const name of flagNames) {
-    if (parsed[name] === undefined) continue;
-    appendFlag(parts, name, parsed[name]);
-  }
-  appendFlag(parts, "cursor", cursor);
-  return parts.join(" ");
-}
-
-function appendFlag(parts, name, value) {
-  if (value === true) {
-    parts.push(`--${name}`);
-    return;
-  }
-  if (value === false) {
-    parts.push(`--${name}=false`);
-    return;
-  }
-  parts.push(`--${name}`, formatCommandArg(value));
-}
-
-function formatCommandArg(value) {
-  const text = String(value);
-  if (/^[A-Za-z0-9_./:@-]+$/.test(text)) return text;
-  return `'${text.replace(/'/g, "'\\''")}'`;
-}
-
-function paginationInfo(data, rowCount) {
-  const total = data?.totalCount ?? data?.total ?? data?.pageInfo?.totalCount;
-  const hasNextPageValue = data?.hasNextPage ?? data?.pageInfo?.hasNextPage;
-  const cursor = data?.cursor ?? data?.nextCursor ?? data?.pageInfo?.endCursor;
-  const hasCursor = cursor !== undefined && cursor !== null && cursor !== "";
-  const hasNextPage = hasNextPageValue === undefined ? hasCursor : Boolean(hasNextPageValue);
-  if (typeof total === "number") {
-    return {
-      count: `${rowCount} of ${total} total`,
-      cursor: hasNextPage ? cursor : undefined,
-    };
-  }
-  return {
-    count: hasNextPage ? `${rowCount} returned, more available` : `${rowCount} returned`,
-    cursor: hasNextPage ? cursor : undefined,
-  };
-}
-
-function compactComments(data) {
-  return asArray(data).map((comment) => {
-    const body = formattedPreview(comment.body ?? "", 120);
-    return {
-      id: comment.id ?? "",
-      author: comment.user?.name ?? comment.author?.name ?? "",
-      created: comment.createdAt ?? "",
-      body: body.text,
-      truncated: body.truncated,
-    };
-  });
-}
-
-function compactCommentMutation(comment) {
-  const body = formattedPreview(comment.body ?? "", 120);
-  return {
-    truncated: body.truncated,
-    comment: {
-      id: comment.id ?? "",
-      author: comment.user?.name ?? comment.author?.name ?? "",
-      created: comment.createdAt ?? "",
-      body: body.text,
-    },
-  };
-}
-
-function compactIssues(data) {
-  return asArray(data).map((issue) => ({
-    id: issue.identifier ?? issue.id ?? "",
-    title: issue.title ?? "",
-    state: issue.state?.name ?? issue.state ?? "",
-    assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
-  }));
-}
-
-function compactIssueDetail(issue) {
-  const description = String(issue.description ?? issue.body ?? "");
-  const preview = truncate(description, 1000);
-  return {
-    truncated: preview.truncated,
-    issue: {
-      id: issue.identifier ?? issue.id ?? "",
-      title: issue.title ?? "",
-      state: issue.state?.name ?? issue.status ?? issue.state ?? "",
-      assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
-      description: preview.truncated
-        ? `${preview.text}... (truncated, ${description.length} chars total)`
-        : description,
-      url: issue.url ?? "",
-    },
-  };
-}
-
-function compactIssueMutation(issue) {
-  return {
-    id: issue.identifier ?? issue.id ?? "",
-    title: issue.title ?? "",
-    state: issue.state?.name ?? issue.status ?? issue.state ?? "",
-    project: issue.project?.name ?? issue.project ?? "",
-    team: issue.team?.name ?? issue.team ?? "",
-    url: issue.url ?? "",
-  };
-}
-
-function compactProjectMutation(project) {
-  return {
-    id: project.id ?? "",
-    name: project.name ?? "",
-    status: project.status?.name ?? project.state?.name ?? project.status ?? project.state ?? "",
-    team: project.team?.name ?? project.teams?.[0]?.name ?? project.team ?? "",
-    url: project.url ?? "",
-  };
-}
-
-function compactDocumentMutation(document) {
-  return {
-    id: document.id ?? "",
-    title: document.title ?? document.name ?? "",
-    team: document.team?.name ?? document.team ?? "",
-    project: document.project?.name ?? document.project ?? "",
-    url: document.url ?? "",
-  };
-}
-
-function compactDocumentDetail(document, id) {
-  const content = rewriteMcpHints(String(document.content ?? document.body ?? ""), id);
-  const preview = formattedPreview(content, 1200);
-  return {
-    truncated: preview.truncated,
-    document: {
-      id: document.id ?? id ?? "",
-      title: document.title ?? document.name ?? "",
-      content: preview.text,
-      team: document.team?.name ?? document.team ?? "",
-      project: document.project?.name ?? document.project ?? "",
-      url: document.url ?? "",
-    },
-  };
-}
 
 async function getDocumentDetail(id, runtime) {
   try {
@@ -1276,59 +1031,6 @@ function removedSaveCommand(resource, _args, help) {
   throw usage(`linear-axi ${resource} save has been replaced by explicit create and update commands`, help);
 }
 
-function sanitizeDocument(document, id) {
-  if (!document || typeof document !== "object") return document;
-  return {
-    ...document,
-    content: document.content === undefined ? document.content : rewriteMcpHints(String(document.content), id ?? document.id),
-  };
-}
-
-function mutationData(result, help) {
-  const data = extractData(result);
-  if (data && typeof data === "object" && Object.keys(data).length === 1 && typeof data.text === "string") {
-    throw new AxiError("operational", data.text, help);
-  }
-  return data;
-}
-
-function formattedPreview(value, limit) {
-  const text = String(value ?? "");
-  const preview = truncate(text, limit);
-  if (!preview.truncated) return { text, truncated: false };
-  return {
-    text: `${preview.text}... (truncated, ${text.length} chars total)`,
-    truncated: true,
-  };
-}
-
-function rewriteMcpHints(text, id) {
-  const replacement = id ? `run \`linear-axi documents view ${id} --full\`` : "run `linear-axi documents view <id> --full`";
-  return text.replace(/use `get_document`/g, replacement);
-}
-
-function extractData(result) {
-  if (result?.structuredContent !== undefined) return result.structuredContent;
-  const text = result?.content?.find?.((item) => item.type === "text")?.text;
-  if (text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { text };
-    }
-  }
-  return result ?? {};
-}
-
-function asArray(data) {
-  if (Array.isArray(data)) return data;
-  for (const key of ["issues", "projects", "teams", "users", "documents", "comments", "milestones", "cycles", "statuses", "labels", "nodes", "items", "data"]) {
-    if (Array.isArray(data?.[key])) return data[key];
-  }
-  if (data && typeof data === "object") return [data];
-  return [];
-}
-
 function rejectUnsupportedCommentFlags(parsed) {
   const unsupported = ["issueId", "project", "projectId", "initiative", "initiativeId", "document", "documentId", "milestone", "milestoneId", "parentId"]
     .find((name) => parsed[name] !== undefined);
@@ -1338,49 +1040,6 @@ function rejectUnsupportedCommentFlags(parsed) {
       'Run `linear-axi comments create --issue LIN-123 --body "Ready"`',
     ]);
   }
-}
-
-function collectKnownArgs(parsed, names) {
-  const collected = {};
-  for (const name of names) {
-    if (parsed[name] !== undefined) collected[name] = coerceArg(name, parsed[name]);
-  }
-  return collected;
-}
-
-function rejectIdOnCreate(subcommand, resource, help, parsed) {
-  if (subcommand === "create" && parsed.id !== undefined) {
-    const article = /^[aeiou]/i.test(resource) ? "an" : "a";
-    throw usage(`creating ${article} ${resource} does not accept --id`, help);
-  }
-}
-
-function coerceArg(name, value) {
-  if (["limit", "estimate", "priority"].includes(name)) return parseFiniteNumber(name, value);
-  if (["includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"].includes(name)) return value === true || value === "true";
-  return value;
-}
-
-function parseFiniteNumber(name, value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    throw usage(`--${name} must be a finite number`, [`Run \`linear-axi --help\``]);
-  }
-  return number;
-}
-
-async function readTextFlag(path, cwd) {
-  const absolute = isAbsolute(path) ? path : resolve(cwd, path);
-  try {
-    return await readFile(absolute, "utf8");
-  } catch {
-    throw usage(`file could not be read: ${path}`, ["Rerun with a readable file path"]);
-  }
-}
-
-function truncate(text, limit) {
-  if (text.length <= limit) return { text, truncated: false };
-  return { text: text.slice(0, limit), truncated: true };
 }
 
 function executablePath() {
