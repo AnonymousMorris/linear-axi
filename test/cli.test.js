@@ -535,6 +535,25 @@ test("comments create requires an issue", async () => {
   assert.equal(called, false);
 });
 
+test("comments create requires a body before checking the issue", async () => {
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["comments", "create", "--issue", "LIN-1"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /--body or --body-file is required/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("numeric flags reject invalid finite numbers before MCP calls", async () => {
   let called = false;
 

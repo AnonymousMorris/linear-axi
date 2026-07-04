@@ -528,12 +528,12 @@ async function commentCommand(args, runtime) {
     if (!parsed.issue) {
       throw usage("comments create requires --issue", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
     }
-    await ensureIssueExists(parsed.issue, runtime);
     const toolArgs = { issueId: parsed.issue };
     toolArgs.body = parsed.body ?? (parsed["body-file"] ? await readTextFlag(parsed["body-file"], runtime.cwd) : undefined);
     if (!toolArgs.body) {
       throw usage("--body or --body-file is required", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
     }
+    await ensureIssueExists(parsed.issue, runtime);
     const result = await runtime.client.callTool("save_comment", toolArgs);
     const comment = mutationData(result, [
       'Run `linear-axi comments create --issue LIN-123 --body "Ready"`',
