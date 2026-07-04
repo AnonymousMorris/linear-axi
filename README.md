@@ -77,6 +77,8 @@ The default Linear MCP server does not expose releases or status mutations, so `
 
 ## Development
 
+`src/cli.js` is the runtime/router layer. Resource command handlers live in `src/commands/`, with shared command behavior in `src/commands/shared.js` and lower-level formatting, MCP, argument, and repo-project helpers in `src/lib/`.
+
 ```sh
 npm test
 npm run check
