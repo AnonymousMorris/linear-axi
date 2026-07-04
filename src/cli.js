@@ -219,7 +219,7 @@ async function aliasListCommand(alias, args, runtime) {
     : parsed.fields
       ? selectFields(asArray(data), parseFields(parsed.fields))
       : compactRows(alias, data);
-  const rowCount = Array.isArray(rows) ? rows.length : 1;
+  const rowCount = asArray(data).length;
   const page = paginationInfo(data, rowCount);
   const listValue = Array.isArray(rows) && rows.length === 0 ? `0 ${publicName} found` : rows;
   const help = [
@@ -271,7 +271,21 @@ async function commentCommand(args, runtime) {
     if (parsed.cursor) toolArgs.cursor = parsed.cursor;
     if (parsed.orderBy) toolArgs.orderBy = parsed.orderBy;
     const result = await runtime.client.callTool("list_comments", toolArgs);
-    return renderToon({ comments: parsed.full ? extractData(result) : compactComments(extractData(result)) });
+    const data = extractData(result);
+    const rows = parsed.full ? data : compactComments(data);
+    const rowCount = asArray(data).length;
+    const page = paginationInfo(data, rowCount);
+    const commentsValue = Array.isArray(rows) && rows.length === 0 ? `0 comments found for ${parsed.issue}` : rows;
+    const help = [`Run \`linear-axi comments save --issue ${parsed.issue} --body "..."\` to add a comment`];
+    if (page.cursor) {
+      help.push(`Run \`linear-axi comments list --issue ${parsed.issue} --cursor ${page.cursor}\` to continue`);
+    }
+    return renderToon({
+      count: page.count,
+      ...(page.cursor ? { cursor: page.cursor } : {}),
+      comments: commentsValue,
+      help,
+    });
   }
   if (subcommand === "save") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'comments save --issue LIN-123 --body "Ready"' });
@@ -408,7 +422,11 @@ async function authCommand(args, runtime) {
 async function completeLoginWithCallback(authorizationUrl, runtime, parsed) {
   const timeoutMs = Number(parsed.timeout ?? 300000);
   const callbackUrl = new URL("http://127.0.0.1:14566/oauth/callback");
-  const server = await startOAuthCallbackServer(callbackUrl, timeoutMs);
+  const expectedState = new URL(authorizationUrl).searchParams.get("state");
+  if (!expectedState) {
+    throw usage("OAuth authorization URL did not include state", ["Run `linear-axi auth login --manual`"]);
+  }
+  const server = await startOAuthCallbackServer(callbackUrl, timeoutMs, expectedState);
 
   runtime.stdout?.write?.(renderToon({
     auth: "Linear MCP OAuth authorization required",
@@ -429,7 +447,7 @@ async function completeLoginWithCallback(authorizationUrl, runtime, parsed) {
   }
 }
 
-async function startOAuthCallbackServer(callbackUrl, timeoutMs) {
+async function startOAuthCallbackServer(callbackUrl, timeoutMs, expectedState) {
   if (callbackUrl.hostname !== "127.0.0.1" && callbackUrl.hostname !== "localhost") {
     throw usage("OAuth callback must use localhost or 127.0.0.1", ["Run `linear-axi auth login --manual`"]);
   }
@@ -453,6 +471,12 @@ async function startOAuthCallbackServer(callbackUrl, timeoutMs) {
 
     const error = requestUrl.searchParams.get("error");
     const authCode = requestUrl.searchParams.get("code");
+    const state = requestUrl.searchParams.get("state");
+    if (state !== expectedState) {
+      response.writeHead(400, { "content-type": "text/plain" });
+      response.end("OAuth state did not match. You can close this tab.\n");
+      return;
+    }
     if (error) {
       response.writeHead(400, { "content-type": "text/plain" });
       response.end("Linear authorization failed. You can close this tab.\n");

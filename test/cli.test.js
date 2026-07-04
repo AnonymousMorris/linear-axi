@@ -54,6 +54,25 @@ test("list commands support fields and pagination hints", async () => {
   assert.match(output, /Run `linear-axi projects list --cursor next-page` to continue/);
 });
 
+test("list full counts rows inside response envelopes", async () => {
+  const output = await run(
+    ["projects", "list", "--full"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          projects: [
+            { id: "p1", name: "Roadmap" },
+            { id: "p2", name: "Inbox" },
+          ],
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /count: 2 returned/);
+  assert.match(output, /projects\[2\]\{id,name\}:/);
+});
+
 test("issues list uses list_issues wrapper", async () => {
   let seen;
   const output = await run(
@@ -109,6 +128,25 @@ test("comments list accepts bare full flag", async () => {
   assert.match(output, /c1,Ready,kept/);
 });
 
+test("comments list emits pagination hints", async () => {
+  const output = await run(
+    ["comments", "list", "--issue", "LIN-1"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          comments: [{ id: "c1", body: "Ready" }],
+          pageInfo: { hasNextPage: true, endCursor: "next-comments" },
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /cursor: next-comments/);
+  assert.match(output, /comments\[1\]\{id,author,created,body\}:/);
+  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --cursor next-comments` to continue/);
+});
+
 test("comments reject unsupported parent flags before MCP calls", async () => {
   let called = false;
   const client = runtime({
@@ -156,7 +194,7 @@ test("auth login manual prints authorization url without finishing", async () =>
     runtime({
       listTools: async () => {
         const error = new Error("auth required");
-        error.authorizationUrl = "https://linear.example/authorize?code_challenge=test";
+        error.authorizationUrl = "https://linear.example/authorize?code_challenge=test&state=expected-state";
         throw error;
       },
       finishAuth: async () => {
@@ -166,11 +204,11 @@ test("auth login manual prints authorization url without finishing", async () =>
   );
 
   assert.match(output, /auth: Linear MCP OAuth authorization required/);
-  assert.match(output, /url: "https:\/\/linear.example\/authorize\?code_challenge=test"/);
+  assert.match(output, /url: "https:\/\/linear.example\/authorize\?code_challenge=test&state=expected-state"/);
   assert.equal(finished, false);
 });
 
-test("auth login captures localhost callback and finishes automatically", async () => {
+test("auth login validates localhost callback state before finishing", async () => {
   const writes = [];
   const finishedCodes = [];
   const login = run(
@@ -179,7 +217,7 @@ test("auth login captures localhost callback and finishes automatically", async 
       stdout: { write: (text) => writes.push(text) },
       listTools: async () => {
         const error = new Error("auth required");
-        error.authorizationUrl = "https://linear.example/authorize?code_challenge=test";
+        error.authorizationUrl = "https://linear.example/authorize?code_challenge=test&state=expected-state";
         throw error;
       },
       finishAuth: async (code) => {
@@ -189,7 +227,11 @@ test("auth login captures localhost callback and finishes automatically", async 
   );
 
   await waitFor(() => writes.join("").includes("http://127.0.0.1:14566/oauth/callback"));
-  const response = await fetch("http://127.0.0.1:14566/oauth/callback?code=test-code");
+  const rejected = await fetch("http://127.0.0.1:14566/oauth/callback?code=wrong-code&state=wrong-state");
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(finishedCodes, []);
+
+  const response = await fetch("http://127.0.0.1:14566/oauth/callback?code=test-code&state=expected-state");
   assert.equal(response.status, 200);
 
   const output = await login;
