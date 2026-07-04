@@ -231,7 +231,7 @@ async function aliasListCommand(alias, args, runtime) {
     `Run \`linear-axi ${publicName} list --query "<text>"\` to search`,
   ];
   if (page.cursor) {
-    help.push(`Run \`linear-axi ${publicName} list --cursor ${page.cursor}\` to continue`);
+    help.push(`Run \`${continuationCommand(`linear-axi ${publicName} list`, parsed, LIST_CONTINUATION_FLAGS, page.cursor)}\` to continue`);
   }
   return renderToon({
     count: page.count,
@@ -359,7 +359,21 @@ async function statusCommand(args, runtime) {
     const team = parsed.teamId ?? parsed.team;
     if (!team) throw usage("--team is required", ["Run `linear-axi statuses list --team <team>`"]);
     const result = await callAvailableTool(runtime, ["list_issue_statuses"], collectKnownArgs(parsed, ["team", "teamId", "type", "project", "initiative", "user", "limit", "cursor", "orderBy", "createdAt", "updatedAt", "includeArchived"]));
-    return renderToon({ statuses: parsed.full ? extractData(result) : compactRows("statuses", extractData(result)) });
+    const data = extractData(result);
+    const rows = parsed.full ? data : compactRows("statuses", data);
+    const rowCount = asArray(data).length;
+    const page = paginationInfo(data, rowCount);
+    const statusesValue = Array.isArray(rows) && rows.length === 0 ? `0 statuses found for ${team}` : rows;
+    const help = [`Run \`linear-axi statuses list --team ${formatCommandArg(team)} --full\` to show the full response`];
+    if (page.cursor) {
+      help.push(`Run \`${continuationCommand("linear-axi statuses list", parsed, STATUS_CONTINUATION_FLAGS, page.cursor)}\` to continue`);
+    }
+    return renderToon({
+      count: page.count,
+      ...(page.cursor ? { cursor: page.cursor } : {}),
+      statuses: statusesValue,
+      help,
+    });
   }
   if (subcommand === "save") {
     return removedStatusCommand("save");
@@ -608,6 +622,72 @@ function fieldValue(item, field) {
     return value.name ?? value.displayName ?? value.identifier ?? value.id ?? JSON.stringify(value);
   }
   return value;
+}
+
+const LIST_CONTINUATION_FLAGS = [
+  "assignee",
+  "createdAt",
+  "cycle",
+  "delegate",
+  "label",
+  "limit",
+  "member",
+  "name",
+  "orderBy",
+  "parentId",
+  "priority",
+  "project",
+  "query",
+  "state",
+  "team",
+  "teamId",
+  "updatedAt",
+  "includeArchived",
+  "includeMembers",
+  "includeMilestones",
+  "includeStages",
+  "includeTeams",
+  "fields",
+  "full",
+];
+
+const STATUS_CONTINUATION_FLAGS = [
+  "team",
+  "teamId",
+  "type",
+  "project",
+  "initiative",
+  "user",
+  "limit",
+  "orderBy",
+  "createdAt",
+  "updatedAt",
+  "includeArchived",
+  "full",
+];
+
+function continuationCommand(baseCommand, parsed, flagNames, cursor) {
+  const parts = [baseCommand];
+  for (const name of flagNames) {
+    if (parsed[name] === undefined) continue;
+    appendFlag(parts, name, parsed[name]);
+  }
+  appendFlag(parts, "cursor", cursor);
+  return parts.join(" ");
+}
+
+function appendFlag(parts, name, value) {
+  if (value === true) {
+    parts.push(`--${name}`);
+    return;
+  }
+  parts.push(`--${name}`, formatCommandArg(value));
+}
+
+function formatCommandArg(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:@-]+$/.test(text)) return text;
+  return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 function paginationInfo(data, rowCount) {

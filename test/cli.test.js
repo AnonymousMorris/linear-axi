@@ -48,7 +48,7 @@ test("projects list uses list_projects wrapper", async () => {
 
 test("list commands support fields and pagination hints", async () => {
   const output = await run(
-    ["projects", "list", "--fields", "id,name,state"],
+    ["projects", "list", "--fields", "id,name,state", "--query", "roadmap", "--limit", "25"],
     runtime({
       callTool: async () => ({
         structuredContent: {
@@ -67,7 +67,7 @@ test("list commands support fields and pagination hints", async () => {
   assert.match(output, /projects\[1\]\{id,name,state\}:/);
   assert.match(output, /p1,Roadmap,started/);
   assert.doesNotMatch(output, /ignored/);
-  assert.match(output, /Run `linear-axi projects list --cursor next-page` to continue/);
+  assert.match(output, /Run `linear-axi projects list --limit 25 --query roadmap --fields \\"id,name,state\\" --cursor next-page` to continue/);
 });
 
 test("list full counts rows inside response envelopes", async () => {
@@ -441,6 +441,26 @@ test("statuses list compacts status arrays from envelope", async () => {
 
   assert.match(output, /statuses\[1\]\{id,name,state\}:/);
   assert.match(output, /s1,Done,completed/);
+});
+
+test("statuses list emits pagination hints", async () => {
+  const output = await run(
+    ["statuses", "list", "--team", "ENG", "--limit", "1", "--orderBy", "createdAt"],
+    runtime({
+      listTools: async () => [{ name: "list_issue_statuses" }],
+      callTool: async () => ({
+        structuredContent: {
+          statuses: [{ id: "s1", name: "Todo", state: "unstarted" }],
+          pageInfo: { hasNextPage: true, endCursor: "next-statuses" },
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /cursor: next-statuses/);
+  assert.match(output, /statuses\[1\]\{id,name,state\}:/);
+  assert.match(output, /Run `linear-axi statuses list --team ENG --limit 1 --orderBy createdAt --cursor next-statuses` to continue/);
 });
 
 test("removed releases command returns usage without MCP call", async () => {
