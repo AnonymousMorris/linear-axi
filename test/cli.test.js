@@ -180,6 +180,32 @@ test("comments save uses comment-oriented flags", async () => {
   assert.match(output, /id: c1/);
 });
 
+test("comments save returns compact preview output", async () => {
+  const output = await run(
+    ["comments", "save", "--issue", "LIN-1", "--body", "Ready"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          id: "c1",
+          body: "a".repeat(121),
+          author: { name: "Morris" },
+          createdAt: "2026-07-04T12:00:00Z",
+          metadata: "hidden",
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /comment:/);
+  assert.match(output, /id: c1/);
+  assert.match(output, /author: Morris/);
+  assert.match(output, /created: "2026-07-04T12:00:00Z"/);
+  assert.match(output, /\.\.\. \(truncated, 121 chars total\)/);
+  assert.doesNotMatch(output, /metadata/);
+  assert.match(output, /Run `linear-axi comments list --issue LIN-1` to verify comments/);
+  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --full` to show complete comment bodies/);
+});
+
 test("comments save treats text-only mutation responses as errors", async () => {
   await assert.rejects(
     () => run(
@@ -306,6 +332,43 @@ test("comments save requires an issue", async () => {
       }),
     ),
     /comments save requires --issue/,
+  );
+
+  assert.equal(called, false);
+});
+
+test("numeric flags reject invalid finite numbers before MCP calls", async () => {
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["issues", "list", "--limit", "abc"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "usage");
+      assert.equal(error.exitCode, 2);
+      assert.match(error.message, /--limit must be a finite number/);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () => run(
+      ["issues", "save", "--title", "Task", "--team", "ENG", "--priority", "Infinity"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /--priority must be a finite number/,
   );
 
   assert.equal(called, false);

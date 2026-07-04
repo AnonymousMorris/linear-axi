@@ -346,7 +346,7 @@ async function commentCommand(args, runtime) {
       throw usage("comments list requires --issue", ["Run `linear-axi comments list --issue LIN-123`"]);
     }
     const toolArgs = { issueId: parsed.issue };
-    toolArgs.limit = Number(parsed.limit ?? DEFAULT_LIMIT);
+    toolArgs.limit = parseFiniteNumber("limit", parsed.limit ?? DEFAULT_LIMIT);
     if (parsed.cursor) toolArgs.cursor = parsed.cursor;
     if (parsed.orderBy) toolArgs.orderBy = parsed.orderBy;
     const result = await runtime.client.callTool("list_comments", toolArgs);
@@ -389,7 +389,14 @@ async function commentCommand(args, runtime) {
       'Run `linear-axi comments save --issue LIN-123 --body "Ready"`',
       `Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)}\` to verify comments`,
     ]);
-    return renderToon({ comment });
+    const compact = compactCommentMutation(comment);
+    return renderToon({
+      comment: compact.comment,
+      help: [
+        `Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)}\` to verify comments`,
+        ...(compact.truncated ? [`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`] : []),
+      ],
+    });
   }
   throw usage(`unknown comments command: ${subcommand}`, ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments save --issue LIN-123 --body \"...\"`"]);
 }
@@ -528,7 +535,7 @@ async function authCommand(args, runtime) {
 }
 
 async function completeLoginWithCallback(authorizationUrl, runtime, parsed) {
-  const timeoutMs = Number(parsed.timeout ?? 300000);
+  const timeoutMs = parseFiniteNumber("timeout", parsed.timeout ?? 300000);
   const callbackUrl = new URL("http://127.0.0.1:14566/oauth/callback");
   const expectedState = new URL(authorizationUrl).searchParams.get("state");
   if (!expectedState) {
@@ -838,6 +845,19 @@ function compactComments(data) {
   });
 }
 
+function compactCommentMutation(comment) {
+  const body = formattedPreview(comment.body ?? "", 120);
+  return {
+    truncated: body.truncated,
+    comment: {
+      id: comment.id ?? "",
+      author: comment.user?.name ?? comment.author?.name ?? "",
+      created: comment.createdAt ?? "",
+      body: body.text,
+    },
+  };
+}
+
 function compactIssues(data) {
   return asArray(data).map((issue) => ({
     id: issue.identifier ?? issue.id ?? "",
@@ -999,9 +1019,17 @@ function collectKnownArgs(parsed, names) {
 }
 
 function coerceArg(name, value) {
-  if (["limit", "estimate", "priority"].includes(name)) return Number(value);
+  if (["limit", "estimate", "priority"].includes(name)) return parseFiniteNumber(name, value);
   if (["includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"].includes(name)) return value === true || value === "true";
   return value;
+}
+
+function parseFiniteNumber(name, value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw usage(`--${name} must be a finite number`, [`Run \`linear-axi --help\``]);
+  }
+  return number;
 }
 
 async function readTextFlag(path, cwd) {
