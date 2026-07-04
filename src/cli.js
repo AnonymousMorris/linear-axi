@@ -281,7 +281,7 @@ async function commentCommand(args, runtime) {
     const commentsValue = Array.isArray(rows) && rows.length === 0 ? `0 comments found for ${parsed.issue}` : rows;
     const help = [`Run \`linear-axi comments save --issue ${parsed.issue} --body "..."\` to add a comment`];
     if (page.cursor) {
-      help.push(`Run \`linear-axi comments list --issue ${parsed.issue} --cursor ${page.cursor}\` to continue`);
+      help.push(`Run \`${continuationCommand("linear-axi comments list", parsed, COMMENT_CONTINUATION_FLAGS, page.cursor)}\` to continue`);
     }
     return renderToon({
       count: page.count,
@@ -663,6 +663,13 @@ const STATUS_CONTINUATION_FLAGS = [
   "createdAt",
   "updatedAt",
   "includeArchived",
+  "full",
+];
+
+const COMMENT_CONTINUATION_FLAGS = [
+  "issue",
+  "limit",
+  "orderBy",
   "full",
 ];
 

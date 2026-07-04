@@ -145,22 +145,27 @@ test("comments list accepts bare full flag", async () => {
 });
 
 test("comments list emits pagination hints", async () => {
+  let seen;
   const output = await run(
-    ["comments", "list", "--issue", "LIN-1"],
+    ["comments", "list", "--issue", "LIN-1", "--orderBy", "createdAt", "--limit", "10", "--full"],
     runtime({
-      callTool: async () => ({
-        structuredContent: {
-          comments: [{ id: "c1", body: "Ready" }],
-          pageInfo: { hasNextPage: true, endCursor: "next-comments" },
-        },
-      }),
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return {
+          structuredContent: {
+            comments: [{ id: "c1", body: "Ready" }],
+            pageInfo: { hasNextPage: true, endCursor: "next-comments" },
+          },
+        };
+      },
     }),
   );
 
+  assert.deepEqual(seen, { name: "list_comments", args: { issueId: "LIN-1", limit: 10, orderBy: "createdAt" } });
   assert.match(output, /count: "1 returned, more available"/);
   assert.match(output, /cursor: next-comments/);
-  assert.match(output, /comments\[1\]\{id,author,created,body\}:/);
-  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --cursor next-comments` to continue/);
+  assert.match(output, /comments\[1\]\{id,body\}:/);
+  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --limit 10 --orderBy createdAt --full --cursor next-comments` to continue/);
 });
 
 test("comments reject unsupported parent flags before MCP calls", async () => {
