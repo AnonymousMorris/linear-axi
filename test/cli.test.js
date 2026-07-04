@@ -509,6 +509,59 @@ test("projects save wraps create_project and returns compact output", async () =
   assert.doesNotMatch(output, /extra/);
 });
 
+test("projects save maps team when falling back to save_project create shape", async () => {
+  let seen;
+  const output = await run(
+    ["projects", "save", "--name", "Roadmap", "--team", "ENG", "--summary", "Plan"],
+    runtime({
+      listTools: async () => [{ name: "save_project" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "p1", name: "Roadmap", status: { name: "Planned" }, teams: [{ name: "ENG" }] } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "save_project", args: { name: "Roadmap", summary: "Plan", setTeams: ["ENG"] } });
+  assert.match(output, /project:/);
+  assert.match(output, /team: ENG/);
+});
+
+test("projects save maps team when retrying unknown create_project with save_project", async () => {
+  const seen = [];
+  await run(
+    ["projects", "save", "--name", "Roadmap", "--teamId", "team-1", "--summary", "Plan"],
+    runtime({
+      callTool: async (name, args) => {
+        seen.push({ name, args });
+        if (name === "create_project") throw new Error("unknown tool: create_project");
+        return { structuredContent: { id: "p1", name: "Roadmap" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, [
+    { name: "create_project", args: { name: "Roadmap", teamId: "team-1", summary: "Plan" } },
+    { name: "save_project", args: { name: "Roadmap", summary: "Plan", setTeams: ["team-1"] } },
+  ]);
+});
+
+test("projects save maps team when update falls back to save_project", async () => {
+  let seen;
+  await run(
+    ["projects", "save", "--id", "p1", "--team", "ENG", "--summary", "Plan"],
+    runtime({
+      listTools: async () => [{ name: "save_project" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "p1", name: "Roadmap" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "save_project", args: { id: "p1", summary: "Plan", addTeams: ["ENG"] } });
+});
+
 test("mutation text responses become structured errors", async () => {
   await assert.rejects(
     () => run(

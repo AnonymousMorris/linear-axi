@@ -274,8 +274,8 @@ async function projectCommand(args, runtime) {
       ]);
     }
     const result = toolArgs.id
-      ? await callAvailableTool(runtime, ["update_project", "save_project"], toolArgs)
-      : await callAvailableTool(runtime, ["create_project", "save_project"], toolArgs);
+      ? await callAvailableTool(runtime, ["update_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs))
+      : await callAvailableTool(runtime, ["create_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs));
     const project = mutationData(result, [
       'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
       "Run `linear-axi teams list --fields id,name,key` to choose a team",
@@ -639,20 +639,32 @@ async function callAvailableTool(runtime, candidates, args) {
     throw new ToolUnavailableError(candidates);
   }
   const preferred = candidates.find((candidate) => names.has(candidate)) ?? candidates[0];
+  const argsFor = typeof args === "function" ? args : () => args;
   try {
-    return await runtime.client.callTool(preferred, args);
+    return await runtime.client.callTool(preferred, argsFor(preferred));
   } catch (error) {
     if (!isUnknownToolError(error)) throw error;
     for (const candidate of candidates) {
       if (candidate === preferred) continue;
       try {
-        return await runtime.client.callTool(candidate, args);
+        return await runtime.client.callTool(candidate, argsFor(candidate));
       } catch (candidateError) {
         if (!isUnknownToolError(candidateError)) throw candidateError;
       }
     }
     throw error;
   }
+}
+
+function projectSaveToolArgs(toolName, args) {
+  if (toolName !== "save_project") return args;
+  const { team, teamId, ...projectArgs } = args;
+  const teamRef = teamId ?? team;
+  if (teamRef === undefined) return projectArgs;
+  return {
+    ...projectArgs,
+    [projectArgs.id ? "addTeams" : "setTeams"]: [teamRef],
+  };
 }
 
 function isUnknownToolError(error) {
