@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { run } from "../src/cli.js";
 
 test("top help exposes Linear resource commands", async () => {
@@ -26,7 +29,9 @@ test("home auth errors suggest login before list commands", async () => {
   );
 
   assert.match(output, /error: Linear MCP OAuth authorization required/);
-  assert.match(output, /help\[4\]:\n  Run `linear-axi auth login` to authorize Linear MCP access\n  Run `linear-axi issues list --assignee me --limit 50` to list issues/);
+  assert.match(output, /Run `linear-axi auth login` to authorize Linear MCP access/);
+  assert.match(output, /linear-axi init --project/);
+  assert.match(output, /Run `linear-axi issues list --assignee me --limit 50` to list issues/);
 });
 
 test("projects list uses list_projects wrapper", async () => {
@@ -161,6 +166,83 @@ test("issues list uses list_issues wrapper", async () => {
   assert.deepEqual(seen, { name: "list_issues", args: { assignee: "me", limit: 50 } });
   assert.match(output, /issues\[1\]\{id,title,state,assignee\}:/);
   assert.match(output, /LIN-1,Fix auth,In Progress,Morris/);
+});
+
+test("init saves repo project and issues list uses it by default", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+
+  const initOutput = await run(["init", "--project", "Roadmap"], runtime({ cwd: repo }));
+  assert.match(initOutput, /project: initialized/);
+  assert.match(initOutput, /file: .+\.linear-project/);
+  assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { project: "Roadmap" });
+
+  let seen;
+  await run(
+    ["issues", "list"],
+    runtime({
+      cwd: repo,
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { issues: [] } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "list_issues", args: { project: "Roadmap", limit: 50 } });
+});
+
+test("repo project discovery walks up from a subdirectory and explicit project wins", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  const child = join(repo, "packages", "app");
+  await mkdir(join(repo, ".git"));
+  await mkdir(child, { recursive: true });
+  await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
+
+  let seen;
+  await run(
+    ["issues", "list", "--project", "Other"],
+    runtime({
+      cwd: child,
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { issues: [] } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "list_issues", args: { project: "Other", limit: 50 } });
+});
+
+test("init requires a Git repository before writing .linear-project", async (t) => {
+  const dir = await makeNoGitTempDir();
+  if (!dir) {
+    t.skip("no writable temp parent without a .git ancestor");
+    return;
+  }
+
+  await assert.rejects(
+    () => run(["init", "--project", "Roadmap"], runtime({ cwd: dir })),
+    /current directory is not inside a Git repository/,
+  );
+});
+
+test("init is idempotent and protects existing project values", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
+
+  const same = await run(["init", "--project", "Roadmap"], runtime({ cwd: repo }));
+  assert.match(same, /project: already initialized/);
+
+  await assert.rejects(
+    () => run(["init", "--project", "Other"], runtime({ cwd: repo })),
+    /\.linear-project already exists/,
+  );
+
+  const replaced = await run(["init", "--project", "Other", "--force"], runtime({ cwd: repo }));
+  assert.match(replaced, /project: initialized/);
+  assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { project: "Other" });
 });
 
 test("comments save uses comment-oriented flags", async () => {
@@ -872,11 +954,38 @@ async function waitFor(predicate) {
 
 function runtime(client) {
   return {
-    cwd: process.cwd(),
+    cwd: client.cwd ?? process.cwd(),
     env: {},
     binPath: "/tmp/linear-axi",
     mcpUrl: "https://mcp.linear.app/mcp",
     stdout: client.stdout,
     client: { close: async () => {}, ...client },
   };
+}
+
+async function makeNoGitTempDir() {
+  for (const parent of [tmpdir(), "/var/tmp", "/dev/shm"]) {
+    if (await hasGitAncestor(parent)) continue;
+    try {
+      return await mkdtemp(join(parent, "linear-axi-no-git-"));
+    } catch {
+      // Try the next conventional temp directory.
+    }
+  }
+  return null;
+}
+
+async function hasGitAncestor(path) {
+  let current = resolve(path);
+  while (true) {
+    try {
+      await stat(join(current, ".git"));
+      return true;
+    } catch {
+      // Keep walking.
+    }
+    const parent = dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
 }

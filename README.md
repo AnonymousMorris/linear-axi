@@ -13,12 +13,23 @@ By default the CLI reads the Linear MCP URL from `[mcp_servers.linear].url` in `
 
 The default remote Linear MCP endpoint uses OAuth. Run `linear-axi auth login`, open the returned URL, and the CLI will capture the localhost callback and save tokens automatically. In a headless environment, run `linear-axi auth login --manual`, open the URL, copy the `code` from the failed localhost redirect, then finish with `linear-axi auth finish --code <code>`. Set `LINEAR_AXI_MCP_URL` to use a different MCP endpoint, or `CODEX_CONFIG` to read the URL from another Codex config file. Set `LINEAR_AXI_MCP_TOKEN` or `LINEAR_MCP_TOKEN` only when your endpoint expects a bearer token. Set `LINEAR_AXI_AUTH_FILE` to store OAuth state somewhere other than `${XDG_CONFIG_HOME:-~/.config}/linear-axi/oauth.json`.
 
+## Project setup
+
+Run this once from a Git repository to bind the repo to its Linear project:
+
+```sh
+linear-axi init --project "Roadmap"
+```
+
+This writes `.linear-project` at the Git root. After that, project-scoped commands such as `linear-axi issues list`, `linear-axi issues save ...`, `linear-axi documents list`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on any command to override the repo default once. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
+
 ## Commands
 
 The CLI is organized as `linear-axi <resource> <action>`. Internally each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` or any command with `--help` for the focused flag reference.
 
 ```sh
 linear-axi
+linear-axi init --project "Roadmap"
 linear-axi auth login
 linear-axi auth login --manual
 linear-axi auth finish --code <code>
