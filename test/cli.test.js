@@ -6,6 +6,9 @@ test("top help exposes Linear resource commands", async () => {
   const output = await run(["--help"], runtime({}));
 
   assert.match(output, /issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels/);
+  assert.doesNotMatch(output, /releases/);
+  assert.doesNotMatch(output, /statuses save/);
+  assert.doesNotMatch(output, /statuses delete/);
   assert.doesNotMatch(output, /tools list/);
   assert.doesNotMatch(output, /call <tool>/);
 });
@@ -172,20 +175,44 @@ test("statuses list compacts status arrays from envelope", async () => {
   assert.match(output, /s1,Done,completed/);
 });
 
-test("releases list chooses supported release tool alias", async () => {
-  let seen;
-  await run(
-    ["releases", "list"],
-    runtime({
-      listTools: async () => [{ name: "list_release_pipelines" }],
-      callTool: async (name, args) => {
-        seen = { name, args };
-        return { structuredContent: { releases: [{ id: "r1", name: "Mobile" }] } };
-      },
-    }),
+test("removed releases command returns usage without MCP call", async () => {
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["releases", "list"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /releases is not supported by the default Linear MCP server/,
   );
 
-  assert.deepEqual(seen, { name: "list_release_pipelines", args: { limit: 50 } });
+  assert.equal(called, false);
+});
+
+test("removed status mutations return usage without MCP call", async () => {
+  let called = false;
+  const client = runtime({
+    callTool: async () => {
+      called = true;
+      return {};
+    },
+  });
+
+  await assert.rejects(
+    () => run(["statuses", "save", "--type", "project", "--project", "Roadmap"], client),
+    /statuses save is not supported by the default Linear MCP server/,
+  );
+  await assert.rejects(
+    () => run(["statuses", "delete", "--type", "project", "--id", "status-id"], client),
+    /statuses delete is not supported by the default Linear MCP server/,
+  );
+
+  assert.equal(called, false);
 });
 
 test("mcp-shaped tools command is not public cli", async () => {

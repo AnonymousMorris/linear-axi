@@ -27,7 +27,6 @@ linear-axi comments save --issue LIN-123 --body "Ready for review."
 linear-axi documents save --title "Spec" --team ENG --content-file spec.md
 linear-axi milestones list --project "Roadmap"
 linear-axi statuses list --team ENG
-linear-axi statuses save --type project --project "Roadmap" --health onTrack --body "Shipped."
 ```
 
 The CLI is organized as `linear-axi <resource> <action>`. Internally each action forwards to the matching Linear MCP tool, then formats the result for agents.

@@ -20,8 +20,6 @@ const LIST_TOOL_ALIASES = {
   document: ["list_documents"],
   labels: ["list_issue_labels"],
   label: ["list_issue_labels"],
-  releases: ["list_releases", "list_release_pipelines"],
-  release: ["list_releases", "list_release_pipelines"],
 };
 
 export async function main(args, context) {
@@ -52,6 +50,7 @@ export async function run(args, runtime) {
   if (command === "cycles" || command === "cycle") return cycleCommand(rest, runtime);
   if (command === "statuses" || command === "status") return statusCommand(rest, runtime);
   if (command === "documents" || command === "document") return documentCommand(rest, runtime);
+  if (command === "releases" || command === "release") return removedResourceCommand(command);
   if (command in LIST_TOOL_ALIASES) return listResourceCommand(command, rest, runtime);
 
   throw usage(`unknown command: ${command}`, [
@@ -194,7 +193,6 @@ async function aliasListCommand(alias, args, runtime) {
     "priority",
     "project",
     "query",
-    "release",
     "state",
     "team",
     "teamId",
@@ -321,20 +319,28 @@ async function statusCommand(args, runtime) {
     return renderToon({ statuses: parsed.full ? extractData(result) : compactRows("statuses", extractData(result)) });
   }
   if (subcommand === "save") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: 'statuses save --type project --project Roadmap --health onTrack --body "Update"' });
-    if (parsed.help) return statusSaveHelp();
-    if (!parsed.type) throw usage("--type is required", ["Run `linear-axi statuses save --type project --project <project> --body \"...\"`"]);
-    const result = await callAvailableTool(runtime, ["save_status_update"], collectKnownArgs(parsed, ["id", "type", "project", "initiative", "health", "body"]));
-    return renderToon({ status: extractData(result) });
+    return removedStatusCommand("save");
   }
   if (subcommand === "delete") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: "statuses delete --type project --id <id>" });
-    if (parsed.help) return statusDeleteHelp();
-    if (!parsed.id || !parsed.type) throw usage("--id and --type are required", ["Run `linear-axi statuses delete --type project --id <id>`"]);
-    const result = await callAvailableTool(runtime, ["delete_status_update"], { id: parsed.id, type: parsed.type });
-    return renderToon({ status: extractData(result) });
+    return removedStatusCommand("delete");
   }
-  throw usage(`unknown statuses command: ${subcommand}`, ["Run `linear-axi statuses list --type project`"]);
+  throw usage(`unknown statuses command: ${subcommand}`, ["Run `linear-axi statuses list --team <team>`"]);
+}
+
+function removedResourceCommand(command) {
+  throw usage(`${command} is not supported by the default Linear MCP server`, [
+    "Run `linear-axi issues list`",
+    "Run `linear-axi projects list`",
+    "Run `linear-axi teams list`",
+    "Run `linear-axi statuses list --team <team>`",
+  ]);
+}
+
+function removedStatusCommand(subcommand) {
+  throw usage(`statuses ${subcommand} is not supported by the default Linear MCP server`, [
+    "Run `linear-axi statuses list --team <team>`",
+    "Run `linear-axi issues save --id <id> --state <state>`",
+  ]);
 }
 
 async function authCommand(args, runtime) {
@@ -436,15 +442,6 @@ function compactComments(data) {
   }));
 }
 
-function compactStatusUpdates(data) {
-  return asArray(data).map((status) => ({
-    id: status.id ?? "",
-    health: status.health ?? "",
-    user: status.user?.name ?? "",
-    updated: status.updatedAt ?? status.createdAt ?? "",
-  }));
-}
-
 function compactIssues(data) {
   return asArray(data).map((issue) => ({
     id: issue.identifier ?? issue.id ?? "",
@@ -469,7 +466,7 @@ function extractData(result) {
 
 function asArray(data) {
   if (Array.isArray(data)) return data;
-  for (const key of ["issues", "projects", "teams", "users", "documents", "comments", "milestones", "cycles", "statuses", "labels", "releases", "nodes", "items", "data"]) {
+  for (const key of ["issues", "projects", "teams", "users", "documents", "comments", "milestones", "cycles", "statuses", "labels", "nodes", "items", "data"]) {
     if (Array.isArray(data?.[key])) return data[key];
   }
   if (data && typeof data === "object") return [data];
@@ -650,20 +647,6 @@ examples:
 `;
 }
 
-function statusSaveHelp() {
-  return `usage: linear-axi statuses save --type project|initiative [--project <project> | --initiative <initiative>] [--health onTrack|atRisk|offTrack] [--body <markdown>]
-examples:
-  linear-axi statuses save --type project --project "Roadmap" --health onTrack --body "Shipped."
-`;
-}
-
-function statusDeleteHelp() {
-  return `usage: linear-axi statuses delete --type project|initiative --id <id>
-examples:
-  linear-axi statuses delete --type project --id <id>
-`;
-}
-
 function issueViewHelp() {
   return `usage: linear-axi issues view <id> [--full]
 examples:
@@ -710,7 +693,6 @@ function pluralName(name) {
     user: "users",
     document: "documents",
     label: "labels",
-    release: "releases",
   };
   return names[name] ?? name;
 }
