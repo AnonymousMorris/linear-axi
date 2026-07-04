@@ -192,6 +192,74 @@ test("init saves repo project and issues list uses it by default", async () => {
   assert.deepEqual(seen, { name: "list_issues", args: { project: "Roadmap", limit: 50 } });
 });
 
+test("repo project default applies to issue creates but not updates", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
+
+  let seen;
+  await run(
+    ["issues", "save", "--title", "Fix auth", "--team", "ENG"],
+    runtime({
+      cwd: repo,
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { identifier: "LIN-1", title: "Fix auth" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "save_issue", args: { title: "Fix auth", team: "ENG", project: "Roadmap" } });
+
+  await run(
+    ["issues", "save", "--id", "LIN-1", "--state", "Done"],
+    runtime({
+      cwd: repo,
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { identifier: "LIN-1", title: "Fix auth" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "save_issue", args: { id: "LIN-1", state: "Done" } });
+});
+
+test("repo project default applies to document creates but not updates", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
+
+  let seen;
+  await run(
+    ["documents", "save", "--title", "Spec"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "create_document" }, { name: "update_document" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "doc1", title: "Spec" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "create_document", args: { title: "Spec", project: "Roadmap" } });
+
+  await run(
+    ["documents", "save", "--id", "doc1", "--title", "Updated"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "create_document" }, { name: "update_document" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "doc1", title: "Updated" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "update_document", args: { id: "doc1", title: "Updated" } });
+});
+
 test("repo project discovery walks up from a subdirectory and explicit project wins", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   const child = join(repo, "packages", "app");

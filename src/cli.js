@@ -223,7 +223,7 @@ async function saveIssueCommand(args, runtime) {
     "priority",
   ]);
   if (parsed.label) toolArgs.labels = parsed.label;
-  await applyRepoProjectDefault(toolArgs, runtime);
+  if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
   if (parsed["description-file"]) toolArgs.description = await readTextFlag(parsed["description-file"], runtime.cwd);
   if (!toolArgs.id && (!toolArgs.title || !toolArgs.team)) {
     throw usage("creating an issue requires --title and --team", [
@@ -375,7 +375,7 @@ async function documentCommand(args, runtime) {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'documents save --title "Spec" --team ENG' });
     if (parsed.help) return documentSaveHelp();
     const toolArgs = collectKnownArgs(parsed, ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"]);
-    await applyRepoProjectDefault(toolArgs, runtime);
+    if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
     if (parsed["content-file"]) toolArgs.content = await readTextFlag(parsed["content-file"], runtime.cwd);
     if (!toolArgs.id && !toolArgs.title) {
       throw usage("creating a document requires --title", ['Run `linear-axi documents save --title "Spec" --team "<team>"`']);
