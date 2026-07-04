@@ -378,6 +378,10 @@ async function projectCommand(args, runtime) {
   if (subcommand === "create" || subcommand === "update") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: `projects ${subcommand} --name "Roadmap" --team ENG` });
     if (parsed.help) return subcommand === "create" ? projectCreateHelp() : projectUpdateHelp();
+    rejectIdOnCreate(subcommand, "project", [
+      'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
+      'Run `linear-axi projects update --id <id> --summary "Updated scope"` to edit an existing project',
+    ], parsed);
     const toolArgs = collectKnownArgs(parsed, ["id", "name", "team", "teamId", "summary", "description", "state", "status", "lead", "startDate", "targetDate"]);
     if (subcommand === "create" && (!toolArgs.name || !(toolArgs.team ?? toolArgs.teamId))) {
       throw usage("creating a project requires --name and --team", [
@@ -441,6 +445,10 @@ async function documentCommand(args, runtime) {
   if (subcommand === "create" || subcommand === "update") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: `documents ${subcommand} --title "Spec" --team ENG` });
     if (parsed.help) return subcommand === "create" ? documentCreateHelp() : documentUpdateHelp();
+    rejectIdOnCreate(subcommand, "document", [
+      'Run `linear-axi documents create --title "Spec" --team "<team>" --content-file spec.md`',
+      'Run `linear-axi documents update --id <id> --content "Updated"` to edit an existing document',
+    ], parsed);
     const toolArgs = collectKnownArgs(parsed, ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"]);
     if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
     if (parsed["content-file"]) toolArgs.content = await readTextFlag(parsed["content-file"], runtime.cwd);
@@ -570,6 +578,10 @@ async function milestoneCommand(args, runtime) {
   if (subcommand === "create" || subcommand === "update") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: `milestones ${subcommand} --project "Roadmap" --name "Beta"` });
     if (parsed.help) return subcommand === "create" ? milestoneCreateHelp() : milestoneUpdateHelp();
+    rejectIdOnCreate(subcommand, "milestone", [
+      'Run `linear-axi milestones create --project "<project>" --name "<name>"`',
+      'Run `linear-axi milestones update --project "<project>" --id <id>` to edit an existing milestone',
+    ], parsed);
     const toolArgs = collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]);
     if (subcommand === "create") await applyRepoProjectDefault(toolArgs, runtime);
     if (!toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones create --project "<project>" --name "<name>"`']);
@@ -1330,6 +1342,12 @@ function collectKnownArgs(parsed, names) {
     if (parsed[name] !== undefined) collected[name] = coerceArg(name, parsed[name]);
   }
   return collected;
+}
+
+function rejectIdOnCreate(subcommand, resource, help, parsed) {
+  if (subcommand === "create" && parsed.id !== undefined) {
+    throw usage(`creating a ${resource} does not accept --id`, help);
+  }
 }
 
 function coerceArg(name, value) {

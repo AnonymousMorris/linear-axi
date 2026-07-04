@@ -763,6 +763,36 @@ test("documents create and update use create or update document tools", async ()
   assert.deepEqual(seen, { name: "update_document", args: { id: "doc1", content: "Updated" } });
 });
 
+test("explicit create commands reject id before MCP calls", async () => {
+  for (const [args, message] of [
+    [["projects", "create", "--id", "p1", "--name", "Roadmap", "--team", "ENG"], /creating a project does not accept --id/],
+    [["documents", "create", "--id", "doc1", "--title", "Spec"], /creating a document does not accept --id/],
+    [["milestones", "create", "--project", "Roadmap", "--id", "m1", "--name", "Beta"], /creating a milestone does not accept --id/],
+  ]) {
+    let called = false;
+
+    await assert.rejects(
+      () => run(
+        args,
+        runtime({
+          callTool: async () => {
+            called = true;
+            return {};
+          },
+        }),
+      ),
+      (error) => {
+        assert.equal(error.kind, "usage");
+        assert.equal(error.exitCode, 2);
+        assert.match(error.message, message);
+        return true;
+      },
+    );
+
+    assert.equal(called, false);
+  }
+});
+
 test("documents view uses get_document and rewrites MCP-native truncation hints", async () => {
   const output = await run(
     ["documents", "view", "doc1"],
