@@ -51,6 +51,7 @@ export async function run(args, runtime) {
   if (command === "cycles" || command === "cycle") return cycleCommand(rest, runtime);
   if (command === "statuses" || command === "status") return statusCommand(rest, runtime);
   if (command === "documents" || command === "document") return documentCommand(rest, runtime);
+  if (command === "projects" || command === "project") return projectCommand(rest, runtime);
   if (command === "releases" || command === "release") return removedResourceCommand(command);
   if (command in LIST_TOOL_ALIASES) return listResourceCommand(command, rest, runtime);
 
@@ -117,6 +118,7 @@ async function home(runtime) {
 
 async function issueCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("issues", ["list", "view", "save"]);
   if (!subcommand || subcommand === "list") {
     return aliasListCommand("issues", rest, runtime);
   }
@@ -125,6 +127,10 @@ async function issueCommand(args, runtime) {
     if (parsed.help) return issueViewHelp();
     const id = parsed.positionals[0];
     if (!id) throw usage("issue id is required", ["Run `linear-axi issues view <id>`"]);
+    if (id === "all") throw usage("issues view expects one issue id", [
+      "Run `linear-axi issues list --limit 50` to view many issues",
+      "Run `linear-axi issues view <id>` to view one issue",
+    ]);
     const detail = await getIssueDetail(id, runtime);
     if (!detail) return renderToon({ issues: `0 issues found for ${id}` });
     if (parsed.full) return renderToon({ issue: detail });
@@ -170,11 +176,22 @@ async function saveIssueCommand(args, runtime) {
     ]);
   }
   const result = await runtime.client.callTool("save_issue", toolArgs);
-  return renderToon({ issue: extractData(result) });
+  const issue = mutationData(result, [
+    'Run `linear-axi issues save --title "Title" --team "<team>"`',
+    "Run `linear-axi projects list --full` to confirm project/team compatibility",
+  ]);
+  return renderToon({
+    issue: compactIssueMutation(issue),
+    help: [
+      `Run \`linear-axi issues view ${issue.identifier ?? issue.id ?? "<id>"}\` to verify details`,
+      `Run \`linear-axi comments save --issue ${issue.identifier ?? issue.id ?? "<id>"} --body "..."\` to add context`,
+    ],
+  });
 }
 
 async function listResourceCommand(alias, args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp(pluralName(alias), ["list"]);
   if (!subcommand || subcommand === "list") {
     return aliasListCommand(alias, rest, runtime);
   }
@@ -217,12 +234,13 @@ async function aliasListCommand(alias, args, runtime) {
 
   const result = await callAvailableTool(runtime, toolNames, toolArgs);
   const data = extractData(result);
+  const dataRows = asArray(data);
   const rows = parsed.full
     ? data
     : parsed.fields
-      ? selectFields(asArray(data), parseFields(parsed.fields))
+      ? selectFields(dataRows, parseFields(parsed.fields))
       : compactRows(alias, data);
-  const rowCount = asArray(data).length;
+  const rowCount = dataRows.length;
   const page = paginationInfo(data, rowCount);
   const listValue = Array.isArray(rows) && rows.length === 0 ? `0 ${publicName} found` : rows;
   const help = [
@@ -241,9 +259,59 @@ async function aliasListCommand(alias, args, runtime) {
   });
 }
 
+async function projectCommand(args, runtime) {
+  const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("projects", ["list", "save"]);
+  if (!subcommand || subcommand === "list") return aliasListCommand("projects", rest, runtime);
+  if (subcommand === "save") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: 'projects save --name "Roadmap" --team ENG' });
+    if (parsed.help) return projectSaveHelp();
+    const toolArgs = collectKnownArgs(parsed, ["id", "name", "team", "teamId", "summary", "description", "state", "status", "lead", "startDate", "targetDate"]);
+    if (!toolArgs.id && (!toolArgs.name || !(toolArgs.team ?? toolArgs.teamId))) {
+      throw usage("creating a project requires --name and --team", [
+        'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
+        "Run `linear-axi teams list --fields id,name,key` to choose a team",
+      ]);
+    }
+    const result = toolArgs.id
+      ? await callAvailableTool(runtime, ["update_project", "save_project"], toolArgs)
+      : await callAvailableTool(runtime, ["create_project", "save_project"], toolArgs);
+    const project = mutationData(result, [
+      'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
+      "Run `linear-axi teams list --fields id,name,key` to choose a team",
+    ]);
+    return renderToon({
+      project: compactProjectMutation(project),
+      help: [
+        `Run \`linear-axi projects list --query ${formatCommandArg(project.name ?? "<name>")} --full\` to verify details`,
+        `Run \`linear-axi issues save --title "Task" --team "<team>" --project ${formatCommandArg(project.name ?? "<project>")}\` to add an issue`,
+      ],
+    });
+  }
+  throw usage(`unknown projects command: ${subcommand}`, [
+    "Run `linear-axi projects list`",
+    'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
+  ]);
+}
+
 async function documentCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("documents", ["list", "view", "save"]);
   if (!subcommand || subcommand === "list") return aliasListCommand("documents", rest, runtime);
+  if (subcommand === "view") {
+    const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "documents view <id>" });
+    if (parsed.help) return documentViewHelp();
+    const id = parsed.positionals[0] ?? parsed.id;
+    if (!id) throw usage("document id is required", ["Run `linear-axi documents view <id>`"]);
+    const detail = await getDocumentDetail(id, runtime);
+    if (!detail) return renderToon({ documents: `0 documents found for ${id}` });
+    if (parsed.full) return renderToon({ document: detail });
+    const compact = compactDocumentDetail(detail, id);
+    return renderToon({
+      document: compact.document,
+      ...(compact.truncated ? { help: [`Run \`linear-axi documents view ${id} --full\` to show the complete document`] } : {}),
+    });
+  }
   if (subcommand === "save") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'documents save --title "Spec" --team ENG' });
     if (parsed.help) return documentSaveHelp();
@@ -255,13 +323,21 @@ async function documentCommand(args, runtime) {
     const result = toolArgs.id
       ? await callAvailableTool(runtime, ["update_document", "save_document"], toolArgs)
       : await callAvailableTool(runtime, ["create_document", "save_document"], toolArgs);
-    return renderToon({ document: extractData(result) });
+    const document = mutationData(result, [
+      'Run `linear-axi documents save --title "Spec" --team "<team>" --content-file spec.md`',
+      "Run `linear-axi documents view <id>` to read a document",
+    ]);
+    return renderToon({
+      document: compactDocumentMutation(document),
+      help: [`Run \`linear-axi documents view ${document.id ?? "<id>"}\` to verify details`],
+    });
   }
-  throw usage(`unknown documents command: ${subcommand}`, ["Run `linear-axi documents list`", "Run `linear-axi documents save --title \"Spec\" --team ENG`"]);
+  throw usage(`unknown documents command: ${subcommand}`, ["Run `linear-axi documents list`", "Run `linear-axi documents view <id>`", "Run `linear-axi documents save --title \"Spec\" --team ENG`"]);
 }
 
 async function commentCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("comments", ["list", "save"]);
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "comments list --issue LIN-123" });
     if (parsed.help) return commentListHelp();
@@ -280,13 +356,16 @@ async function commentCommand(args, runtime) {
     const page = paginationInfo(data, rowCount);
     const commentsValue = Array.isArray(rows) && rows.length === 0 ? `0 comments found for ${parsed.issue}` : rows;
     const help = [`Run \`linear-axi comments save --issue ${parsed.issue} --body "..."\` to add a comment`];
+    if (!parsed.full && Array.isArray(rows) && rows.some((comment) => comment.truncated)) {
+      help.push(`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`);
+    }
     if (page.cursor) {
       help.push(`Run \`${continuationCommand("linear-axi comments list", parsed, COMMENT_CONTINUATION_FLAGS, page.cursor)}\` to continue`);
     }
     return renderToon({
       count: page.count,
       ...(page.cursor ? { cursor: page.cursor } : {}),
-      comments: commentsValue,
+      comments: parsed.full ? commentsValue : commentsValue.map?.(({ truncated, ...comment }) => comment) ?? commentsValue,
       help,
     });
   }
@@ -313,6 +392,7 @@ async function commentCommand(args, runtime) {
 
 async function milestoneCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("milestones", ["list", "view", "save"]);
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: 'milestones list --project "Roadmap"' });
     if (parsed.help) return milestoneListHelp();
@@ -340,6 +420,7 @@ async function milestoneCommand(args, runtime) {
 
 async function cycleCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("cycles", ["list"]);
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "cycles list --team ENG" });
     if (parsed.help) return cycleListHelp();
@@ -353,6 +434,7 @@ async function cycleCommand(args, runtime) {
 
 async function statusCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("statuses", ["list"]);
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full", "includeArchived"], example: "statuses list --team ENG" });
     if (parsed.help) return statusListHelp();
@@ -402,6 +484,7 @@ function removedStatusCommand(subcommand) {
 
 async function authCommand(args, runtime) {
   const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("auth", ["login", "finish"]);
   if (subcommand === "login") {
     const parsed = parseFlags(rest, { boolean: ["help", "manual"], example: "auth login" });
     if (parsed.help) return authLoginHelp();
@@ -600,6 +683,9 @@ function parseFields(fields) {
 
 function fieldHint(publicName) {
   if (publicName === "issues") return "id,title,state,assignee";
+  if (publicName === "documents") return "id,title,updatedAt";
+  if (publicName === "projects") return "id,name,status";
+  if (publicName === "teams") return "id,name,key";
   if (publicName === "users") return "id,name,email";
   return "id,name,state";
 }
@@ -716,12 +802,16 @@ function paginationInfo(data, rowCount) {
 }
 
 function compactComments(data) {
-  return asArray(data).map((comment) => ({
-    id: comment.id ?? "",
-    author: comment.user?.name ?? comment.author?.name ?? "",
-    created: comment.createdAt ?? "",
-    body: truncate(String(comment.body ?? ""), 120).text,
-  }));
+  return asArray(data).map((comment) => {
+    const body = formattedPreview(comment.body ?? "", 120);
+    return {
+      id: comment.id ?? "",
+      author: comment.user?.name ?? comment.author?.name ?? "",
+      created: comment.createdAt ?? "",
+      body: body.text,
+      truncated: body.truncated,
+    };
+  });
 }
 
 function compactIssues(data) {
@@ -749,6 +839,98 @@ function compactIssueDetail(issue) {
       url: issue.url ?? "",
     },
   };
+}
+
+function compactIssueMutation(issue) {
+  return {
+    id: issue.identifier ?? issue.id ?? "",
+    title: issue.title ?? "",
+    state: issue.state?.name ?? issue.status ?? issue.state ?? "",
+    project: issue.project?.name ?? issue.project ?? "",
+    team: issue.team?.name ?? issue.team ?? "",
+    url: issue.url ?? "",
+  };
+}
+
+function compactProjectMutation(project) {
+  return {
+    id: project.id ?? "",
+    name: project.name ?? "",
+    status: project.status?.name ?? project.state?.name ?? project.status ?? project.state ?? "",
+    team: project.team?.name ?? project.teams?.[0]?.name ?? project.team ?? "",
+    url: project.url ?? "",
+  };
+}
+
+function compactDocumentMutation(document) {
+  return {
+    id: document.id ?? "",
+    title: document.title ?? document.name ?? "",
+    team: document.team?.name ?? document.team ?? "",
+    project: document.project?.name ?? document.project ?? "",
+    url: document.url ?? "",
+  };
+}
+
+function compactDocumentDetail(document, id) {
+  const content = rewriteMcpHints(String(document.content ?? document.body ?? ""), id);
+  const preview = formattedPreview(content, 1200);
+  return {
+    truncated: preview.truncated,
+    document: {
+      id: document.id ?? id ?? "",
+      title: document.title ?? document.name ?? "",
+      content: preview.text,
+      team: document.team?.name ?? document.team ?? "",
+      project: document.project?.name ?? document.project ?? "",
+      url: document.url ?? "",
+    },
+  };
+}
+
+async function getDocumentDetail(id, runtime) {
+  try {
+    const detailed = await callAvailableTool(runtime, ["get_document"], { id });
+    return sanitizeDocument(extractData(detailed), id);
+  } catch (error) {
+    if (!isUnknownToolError(error)) throw error;
+  }
+
+  const listed = await runtime.client.callTool("list_documents", { query: id, limit: 10 });
+  const rawMatches = asArray(extractData(listed)).filter((document) => document.id === id || document.slugId === id);
+  if (rawMatches.length === 0) return null;
+  return sanitizeDocument(rawMatches[0], id);
+}
+
+function sanitizeDocument(document, id) {
+  if (!document || typeof document !== "object") return document;
+  return {
+    ...document,
+    content: document.content === undefined ? document.content : rewriteMcpHints(String(document.content), id ?? document.id),
+  };
+}
+
+function mutationData(result, help) {
+  const data = extractData(result);
+  if (data && typeof data === "object" && Object.keys(data).length === 1 && typeof data.text === "string") {
+    throw new AxiError("operational", data.text, help);
+  }
+  return data;
+}
+
+function formattedPreview(value, limit) {
+  const text = String(value ?? "");
+  const preview = truncate(text, limit);
+  if (!preview.truncated) return { text, truncated: false };
+  return {
+    text: `${preview.text}... (truncated, ${text.length} chars total)`,
+    truncated: true,
+  };
+}
+
+function rewriteMcpHints(text, id) {
+  const replacement = id ? `run \`linear-axi documents view ${id} --full\`` : "run `linear-axi documents view <id> --full`";
+  return text.replace(/use `get_document`/g, replacement);
 }
 
 function extractData(result) {
@@ -794,7 +976,7 @@ function collectKnownArgs(parsed, names) {
 
 function coerceArg(name, value) {
   if (["limit", "estimate", "priority"].includes(name)) return Number(value);
-  if (["includeArchived", "includeMembers", "includeMilestones"].includes(name)) return value === true || value === "true";
+  if (["includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"].includes(name)) return value === true || value === "true";
   return value;
 }
 
@@ -857,10 +1039,53 @@ examples:
   linear-axi
   linear-axi auth login
   linear-axi issues list --assignee me --limit 25
+  linear-axi projects save --name "Roadmap" --team ENG
+  linear-axi documents view <id>
   linear-axi issues save --id LIN-123 --state Done
   linear-axi comments save --issue LIN-123 --body "Ready for review."
 env[4]:
   LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE
+`;
+}
+
+function groupHelp(name, subcommands) {
+  const examples = {
+    issues: [
+      "linear-axi issues list --assignee me --limit 25",
+      "linear-axi issues view LIN-123",
+      'linear-axi issues save --title "Fix auth" --team ENG',
+    ],
+    projects: [
+      "linear-axi projects list --limit 25",
+      'linear-axi projects save --name "Roadmap" --team ENG',
+      'linear-axi issues save --title "Task" --team ENG --project "Roadmap"',
+    ],
+    documents: [
+      "linear-axi documents list --limit 25",
+      "linear-axi documents view <id>",
+      'linear-axi documents save --title "Spec" --team ENG --content-file spec.md',
+    ],
+    comments: [
+      "linear-axi comments list --issue LIN-123",
+      'linear-axi comments save --issue LIN-123 --body "Ready for review."',
+    ],
+    auth: [
+      "linear-axi auth login",
+      "linear-axi auth login --manual",
+      "linear-axi auth finish --code <code>",
+    ],
+    milestones: [
+      'linear-axi milestones list --project "Roadmap"',
+      'linear-axi milestones view --project "Roadmap" "Beta"',
+      'linear-axi milestones save --project "Roadmap" --name "Beta"',
+    ],
+    cycles: ["linear-axi cycles list --team ENG --type current"],
+    statuses: ["linear-axi statuses list --team ENG"],
+  };
+  return `usage: linear-axi ${name} <subcommand>
+subcommands[${subcommands.length}]: ${subcommands.join(", ")}
+examples:
+${(examples[name] ?? [`linear-axi ${name} list`]).map((example) => `  ${example}`).join("\n")}
 `;
 }
 
@@ -875,7 +1100,7 @@ flags:
   --fields <comma-separated-fields>
 examples:
   linear-axi ${alias} list --limit 25
-  linear-axi ${alias} list --fields id,name,state
+  linear-axi ${alias} list --fields ${fieldHint(alias)}
   linear-axi ${alias} list --query "auth" --full
 `;
 }
@@ -902,6 +1127,32 @@ function documentSaveHelp() {
 examples:
   linear-axi documents save --title "Spec" --team ENG --content-file spec.md
   linear-axi documents save --id <id> --content "Updated"
+`;
+}
+
+function documentViewHelp() {
+  return `usage: linear-axi documents view <id> [--full]
+examples:
+  linear-axi documents view <id>
+  linear-axi documents view <id> --full
+`;
+}
+
+function projectSaveHelp() {
+  return `usage: linear-axi projects save (--id <id> | --name <name> --team <team>) [fields]
+flags:
+  --id <id>
+  --name <name>
+  --team <team>
+  --summary <text>
+  --description <markdown>
+  --status <status>
+  --lead <user>
+  --startDate <yyyy-mm-dd>
+  --targetDate <yyyy-mm-dd>
+examples:
+  linear-axi projects save --name "Roadmap" --team ENG
+  linear-axi projects save --id <id> --summary "Updated scope"
 `;
 }
 
@@ -956,10 +1207,17 @@ flags:
   --team <team>
   --state <state>
   --assignee <user>
+  --project <project>
+  --cycle <cycle>
+  --label <label> repeatable
+  --priority <number>
+  --estimate <number>
+  --dueDate <yyyy-mm-dd>
   --description <markdown>
   --description-file <path>
 examples:
   linear-axi issues save --title "Fix auth" --team ENG
+  linear-axi issues save --title "Task" --team ENG --project "Roadmap"
   linear-axi issues save --id LIN-123 --state Done
 `;
 }

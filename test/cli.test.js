@@ -203,6 +203,22 @@ test("comments list emits pagination hints", async () => {
   assert.match(output, /Run `linear-axi comments list --issue LIN-1 --limit 10 --orderBy createdAt --full --cursor next-comments` to continue/);
 });
 
+test("comments list marks truncated bodies and shows full escape hatch", async () => {
+  const output = await run(
+    ["comments", "list", "--issue", "LIN-1"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: { comments: [{ id: "c1", body: "a".repeat(121), author: { name: "Morris" } }] },
+      }),
+    }),
+  );
+
+  assert.match(output, /count: 1 returned/);
+  assert.match(output, /body\}:/);
+  assert.match(output, /\.\.\. \(truncated, 121 chars total\)/);
+  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --full` to show complete comment bodies/);
+});
+
 test("comments reject unsupported parent flags before MCP calls", async () => {
   let called = false;
   const client = runtime({
@@ -385,6 +401,25 @@ test("issues view falls back to exact list match when get_issue is unavailable",
   assert.doesNotMatch(output, /Wrong/);
 });
 
+test("issues view all is rejected instead of returning an empty detail", async () => {
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["issues", "view", "all"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /issues view expects one issue id/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("documents save uses create or update document tools", async () => {
   let seen;
   await run(
@@ -412,6 +447,85 @@ test("documents save uses create or update document tools", async () => {
   );
 
   assert.deepEqual(seen, { name: "update_document", args: { id: "doc1", content: "Updated" } });
+});
+
+test("documents view uses get_document and rewrites MCP-native truncation hints", async () => {
+  const output = await run(
+    ["documents", "view", "doc1"],
+    runtime({
+      listTools: async () => [{ name: "get_document" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "get_document");
+        assert.deepEqual(args, { id: "doc1" });
+        return {
+          structuredContent: {
+            id: "doc1",
+            title: "Spec",
+            content: "short preview (truncated, use `get_document` for full description)",
+          },
+        };
+      },
+    }),
+  );
+
+  assert.match(output, /document:/);
+  assert.match(output, /title: Spec/);
+  assert.match(output, /linear-axi documents view doc1 --full/);
+  assert.doesNotMatch(output, /get_document/);
+});
+
+test("documents save returns compact mutation output", async () => {
+  const output = await run(
+    ["documents", "save", "--title", "Spec", "--team", "ENG", "--content", "Body"],
+    runtime({
+      listTools: async () => [{ name: "create_document" }],
+      callTool: async () => ({ structuredContent: { id: "doc1", title: "Spec", content: "Body", url: "https://linear/doc1", extra: "hidden" } }),
+    }),
+  );
+
+  assert.match(output, /document:/);
+  assert.match(output, /id: doc1/);
+  assert.match(output, /title: Spec/);
+  assert.doesNotMatch(output, /extra/);
+  assert.match(output, /linear-axi documents view doc1/);
+});
+
+test("projects save wraps create_project and returns compact output", async () => {
+  let seen;
+  const output = await run(
+    ["projects", "save", "--name", "Roadmap", "--team", "ENG", "--summary", "Plan"],
+    runtime({
+      listTools: async () => [{ name: "create_project" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "p1", name: "Roadmap", status: { name: "Planned" }, team: { name: "ENG" }, extra: "hidden" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "create_project", args: { name: "Roadmap", team: "ENG", summary: "Plan" } });
+  assert.match(output, /project:/);
+  assert.match(output, /id: p1/);
+  assert.doesNotMatch(output, /extra/);
+});
+
+test("mutation text responses become structured errors", async () => {
+  await assert.rejects(
+    () => run(
+      ["issues", "save", "--title", "Task", "--team", "ENG", "--project", "Wrong"],
+      runtime({
+        callTool: async () => ({ structuredContent: { text: "Project not in same team as issue" } }),
+      }),
+    ),
+    /Project not in same team as issue/,
+  );
+});
+
+test("resource group help is available before choosing a subcommand", async () => {
+  const output = await run(["projects", "--help"], runtime({}));
+
+  assert.match(output, /usage: linear-axi projects <subcommand>/);
+  assert.match(output, /subcommands\[2\]: list, save/);
 });
 
 test("statuses list uses issue status tool", async () => {
@@ -501,6 +615,18 @@ test("statuses list emits pagination hints", async () => {
   assert.match(output, /cursor: next-statuses/);
   assert.match(output, /statuses\[1\]\{id,name,state\}:/);
   assert.match(output, /Run `linear-axi statuses list --team ENG --limit 1 --orderBy createdAt --cursor next-statuses` to continue/);
+});
+
+test("statuses list does not fall back to status updates", async () => {
+  await assert.rejects(
+    () => run(
+      ["statuses", "list", "--team", "ENG"],
+      runtime({
+        listTools: async () => [{ name: "get_status_updates" }],
+      }),
+    ),
+    /Linear MCP server does not expose list_issue_statuses/,
+  );
 });
 
 test("removed releases command returns usage without MCP call", async () => {
