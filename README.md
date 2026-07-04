@@ -43,9 +43,9 @@ linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
 ```
 
-List commands use a compact schema by default. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, or `--full` when you need the complete MCP response.
+List commands use a compact schema by default. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response.
 
-Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated. Mutation commands return compact success objects with the id, title/name, URL, and next-step hints. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
+Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Mutation commands return compact success objects with the id, title/name, URL, and next-step hints. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
 
 The default Linear MCP server does not expose releases or status mutations, so `linear-axi releases ...`, `linear-axi statuses save`, and `linear-axi statuses delete` return structured usage errors instead of calling the server.
 

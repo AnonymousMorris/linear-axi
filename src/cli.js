@@ -1095,8 +1095,8 @@ examples:
   linear-axi documents view <id>
   linear-axi issues save --id LIN-123 --state Done
   linear-axi comments save --issue LIN-123 --body "Ready for review."
-env[4]:
-  LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE
+env[5]:
+  LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE, CODEX_CONFIG
 `;
 }
 
@@ -1145,11 +1145,30 @@ function listAliasHelp(alias) {
   return `usage: linear-axi ${alias} list [filters] [--full]
 flags:
   --limit <n> default ${DEFAULT_LIMIT}
+  --cursor <cursor>
   --query <text>
+  --name <name>
   --team <name-or-id>
+  --teamId <team-id>
   --state <name-or-type>
+  --assignee <user>
+  --delegate <user>
+  --member <user>
+  --project <project>
+  --cycle <cycle>
+  --label <label>
+  --parentId <issue-id>
+  --priority <number>
+  --createdAt <filter>
+  --updatedAt <filter>
   --orderBy createdAt|updatedAt
+  --includeArchived
+  --includeMembers
+  --includeMilestones
+  --includeStages
+  --includeTeams
   --fields <comma-separated-fields>
+  --full
 examples:
   linear-axi ${alias} list --limit 25
   linear-axi ${alias} list --fields ${fieldHint(alias)}
@@ -1158,12 +1177,15 @@ examples:
 }
 
 function commentListHelp() {
-  return `usage: linear-axi comments list --issue <id>
+  return `usage: linear-axi comments list --issue <id> [--full]
 flags:
   --limit <n> default ${DEFAULT_LIMIT}
+  --cursor <cursor>
   --orderBy createdAt|updatedAt
+  --full
 examples:
   linear-axi comments list --issue LIN-123
+  linear-axi comments list --issue LIN-123 --full
 `;
 }
 
@@ -1176,6 +1198,18 @@ examples:
 
 function documentSaveHelp() {
   return `usage: linear-axi documents save (--id <id> | --title <title>) [parent] [--content <markdown> | --content-file <path>]
+flags:
+  --id <id>
+  --title <title>
+  --team <team>
+  --project <project>
+  --issue <issue>
+  --initiative <initiative>
+  --cycle <cycle>
+  --color <color>
+  --icon <icon>
+  --content <markdown>
+  --content-file <path>
 examples:
   linear-axi documents save --title "Spec" --team ENG --content-file spec.md
   linear-axi documents save --id <id> --content "Updated"
@@ -1196,8 +1230,10 @@ flags:
   --id <id>
   --name <name>
   --team <team>
+  --teamId <team-id>
   --summary <text>
   --description <markdown>
+  --state <state>
   --status <status>
   --lead <user>
   --startDate <yyyy-mm-dd>
@@ -1209,7 +1245,10 @@ examples:
 }
 
 function milestoneListHelp() {
-  return `usage: linear-axi milestones list --project <project>
+  return `usage: linear-axi milestones list --project <project> [--full]
+flags:
+  --project <project>
+  --full
 examples:
   linear-axi milestones list --project "Roadmap"
 `;
@@ -1217,6 +1256,8 @@ examples:
 
 function milestoneViewHelp() {
   return `usage: linear-axi milestones view --project <project> <milestone>
+flags:
+  --project <project>
 examples:
   linear-axi milestones view --project "Roadmap" "Beta"
 `;
@@ -1224,13 +1265,24 @@ examples:
 
 function milestoneSaveHelp() {
   return `usage: linear-axi milestones save --project <project> (--id <id> | --name <name>)
+flags:
+  --id <id>
+  --name <name>
+  --project <project>
+  --description <markdown>
+  --targetDate <yyyy-mm-dd>
 examples:
   linear-axi milestones save --project "Roadmap" --name "Beta"
 `;
 }
 
 function cycleListHelp() {
-  return `usage: linear-axi cycles list --team <team-id> [--type current|previous|next|all]
+  return `usage: linear-axi cycles list --team <team> [--type current|previous|next|all] [--full]
+flags:
+  --team <team>
+  --teamId <team-id>
+  --type current|previous|next|all
+  --full
 examples:
   linear-axi cycles list --team ENG --type current
 `;
@@ -1238,8 +1290,23 @@ examples:
 
 function statusListHelp() {
   return `usage: linear-axi statuses list --team <team> [--full]
+flags:
+  --team <team>
+  --teamId <team-id>
+  --type <type>
+  --project <project>
+  --initiative <initiative>
+  --user <user>
+  --limit <n>
+  --cursor <cursor>
+  --orderBy createdAt|updatedAt
+  --createdAt <filter>
+  --updatedAt <filter>
+  --includeArchived
+  --full
 examples:
   linear-axi statuses list --team ENG
+  linear-axi statuses list --team ENG --full
 `;
 }
 
@@ -1261,6 +1328,7 @@ flags:
   --assignee <user>
   --project <project>
   --cycle <cycle>
+  --parentId <issue-id>
   --label <label> repeatable
   --priority <number>
   --estimate <number>
