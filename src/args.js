@@ -74,12 +74,18 @@ function parseBoolean(value, flagName) {
   throw usage(`--${flagName} must be true or false`, [`Run \`linear-axi --help\``]);
 }
 
+const ERROR_CODES = {
+  usage: "VALIDATION_ERROR",
+  not_found: "NOT_FOUND",
+};
+
 export class AxiError extends Error {
   constructor(kind, message, help = []) {
     super(message);
     this.kind = kind;
     this.help = help;
     this.exitCode = kind === "usage" ? 2 : 1;
+    this.code = ERROR_CODES[kind] ?? "OPERATION_ERROR";
   }
 }
 

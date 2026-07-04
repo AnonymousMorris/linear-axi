@@ -18,6 +18,10 @@ test("quotes ambiguous scalar values", () => {
   assert.equal(renderToon({ value: "true", empty: "", text: "hello" }), 'value: "true"\nempty: ""\ntext: hello\n');
 });
 
+test("renders empty arrays compactly", () => {
+  assert.equal(renderToon({ issues: [] }), "issues: []\n");
+});
+
 test("renders help arrays as multiline hints", () => {
   assert.equal(
     renderToon({ help: ["Run `linear-axi issues list`", "Run `linear-axi auth login`"] }),
