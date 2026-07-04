@@ -8,20 +8,20 @@ import { LinearMcpClient } from "./mcp.js";
 
 const DEFAULT_LIMIT = 50;
 const LIST_TOOL_ALIASES = {
-  issues: "list_issues",
-  issue: "list_issues",
-  projects: "list_projects",
-  project: "list_projects",
-  teams: "list_teams",
-  team: "list_teams",
-  users: "list_users",
-  user: "list_users",
-  documents: "list_documents",
-  document: "list_documents",
-  labels: "list_issue_labels",
-  label: "list_issue_labels",
-  releases: "list_release_pipelines",
-  release: "list_release_pipelines",
+  issues: ["list_issues"],
+  issue: ["list_issues"],
+  projects: ["list_projects"],
+  project: ["list_projects"],
+  teams: ["list_teams"],
+  team: ["list_teams"],
+  users: ["list_users"],
+  user: ["list_users"],
+  documents: ["list_documents"],
+  document: ["list_documents"],
+  labels: ["list_issue_labels"],
+  label: ["list_issue_labels"],
+  releases: ["list_releases", "list_release_pipelines"],
+  release: ["list_releases", "list_release_pipelines"],
 };
 
 export async function main(args, context) {
@@ -45,6 +45,7 @@ export async function run(args, runtime) {
 
   const [command, ...rest] = args;
   if (command === "--help" || command === "-h") return topHelp();
+  if (command === "auth") return authCommand(rest, runtime);
   if (command === "issues" || command === "issue") return issueCommand(rest, runtime);
   if (command === "comments" || command === "comment") return commentCommand(rest, runtime);
   if (command === "milestones" || command === "milestone") return milestoneCommand(rest, runtime);
@@ -71,6 +72,7 @@ async function makeRuntime(context) {
     client: context.client ?? new LinearMcpClient({
       url,
       token: context.env.LINEAR_AXI_MCP_TOKEN ?? context.env.LINEAR_MCP_TOKEN,
+      authStorePath: context.env.LINEAR_AXI_AUTH_FILE,
     }),
   };
 }
@@ -119,10 +121,9 @@ async function issueCommand(args, runtime) {
     if (parsed.help) return issueViewHelp();
     const id = parsed.positionals[0];
     if (!id) throw usage("issue id is required", ["Run `linear-axi issues view <id>`"]);
-    const result = await runtime.client.callTool("list_issues", { query: id, limit: 10 });
-    const matches = compactIssues(extractData(result)).filter((issue) => issue.id === id || issue.identifier === id);
-    if (matches.length === 0) return renderToon({ issues: `0 issues found for ${id}` });
-    return renderToon({ issue: parsed.full ? extractData(result) : matches[0] });
+    const detail = await getIssueDetail(id, runtime);
+    if (!detail) return renderToon({ issues: `0 issues found for ${id}` });
+    return renderToon({ issue: parsed.full ? detail : compactIssues(detail)[0] });
   }
   if (subcommand === "save") {
     return saveIssueCommand(rest, runtime);
@@ -175,7 +176,7 @@ async function listResourceCommand(alias, args, runtime) {
 
 async function aliasListCommand(alias, args, runtime) {
   const publicName = pluralName(alias);
-  const toolName = LIST_TOOL_ALIASES[alias];
+  const toolNames = LIST_TOOL_ALIASES[alias];
   const parsed = parseFlags(args, { boolean: ["help", "full", "includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"], example: `${publicName} list --limit ${DEFAULT_LIMIT}` });
   if (parsed.help) return listAliasHelp(publicName);
   const toolArgs = collectKnownArgs(parsed, [
@@ -206,7 +207,7 @@ async function aliasListCommand(alias, args, runtime) {
   ]);
   if (!("limit" in toolArgs)) toolArgs.limit = DEFAULT_LIMIT;
 
-  const result = await runtime.client.callTool(toolName, toolArgs);
+  const result = await callAvailableTool(runtime, toolNames, toolArgs);
   const data = extractData(result);
   const rows = parsed.full ? data : compactRows(alias, data);
   const count = Array.isArray(rows) ? `${rows.length} returned` : "1 returned";
@@ -231,7 +232,9 @@ async function documentCommand(args, runtime) {
     if (!toolArgs.id && !toolArgs.title) {
       throw usage("creating a document requires --title", ['Run `linear-axi documents save --title "Spec" --team "<team>"`']);
     }
-    const result = await runtime.client.callTool("save_document", toolArgs);
+    const result = toolArgs.id
+      ? await callAvailableTool(runtime, ["update_document", "save_document"], toolArgs)
+      : await callAvailableTool(runtime, ["create_document", "save_document"], toolArgs);
     return renderToon({ document: extractData(result) });
   }
   throw usage(`unknown documents command: ${subcommand}`, ["Run `linear-axi documents list`", "Run `linear-axi documents save --title \"Spec\" --team ENG`"]);
@@ -240,7 +243,7 @@ async function documentCommand(args, runtime) {
 async function commentCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (!subcommand || subcommand === "list") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: "comments list --issue LIN-123" });
+    const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "comments list --issue LIN-123" });
     if (parsed.help) return commentListHelp();
     const toolArgs = parentArgs(parsed);
     toolArgs.limit = Number(parsed.limit ?? DEFAULT_LIMIT);
@@ -270,7 +273,7 @@ async function commentCommand(args, runtime) {
 async function milestoneCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (!subcommand || subcommand === "list") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: 'milestones list --project "Roadmap"' });
+    const parsed = parseFlags(rest, { boolean: ["help", "full"], example: 'milestones list --project "Roadmap"' });
     if (parsed.help) return milestoneListHelp();
     if (!parsed.project) throw usage("--project is required", ['Run `linear-axi milestones list --project "<project>"`']);
     const result = await runtime.client.callTool("list_milestones", { project: parsed.project });
@@ -297,7 +300,7 @@ async function milestoneCommand(args, runtime) {
 async function cycleCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (!subcommand || subcommand === "list") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: "cycles list --team ENG" });
+    const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "cycles list --team ENG" });
     if (parsed.help) return cycleListHelp();
     const teamId = parsed.teamId ?? parsed.team;
     if (!teamId) throw usage("--team is required", ["Run `linear-axi cycles list --team <team-id>`"]);
@@ -310,27 +313,109 @@ async function cycleCommand(args, runtime) {
 async function statusCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (!subcommand || subcommand === "list") {
-    const parsed = parseFlags(rest, { boolean: ["help", "full", "includeArchived"], example: "statuses list --type project --project Roadmap" });
+    const parsed = parseFlags(rest, { boolean: ["help", "full", "includeArchived"], example: "statuses list --team ENG" });
     if (parsed.help) return statusListHelp();
-    if (!parsed.type) throw usage("--type is required", ["Run `linear-axi statuses list --type project --project <project>`"]);
-    const result = await runtime.client.callTool("get_status_updates", collectKnownArgs(parsed, ["id", "type", "project", "initiative", "user", "limit", "cursor", "orderBy", "createdAt", "updatedAt", "includeArchived"]));
-    return renderToon({ statuses: parsed.full ? extractData(result) : compactStatusUpdates(extractData(result)) });
+    const team = parsed.teamId ?? parsed.team;
+    if (!team) throw usage("--team is required", ["Run `linear-axi statuses list --team <team>`"]);
+    const result = await callAvailableTool(runtime, ["list_issue_statuses", "get_status_updates"], collectKnownArgs(parsed, ["team", "teamId", "type", "project", "initiative", "user", "limit", "cursor", "orderBy", "createdAt", "updatedAt", "includeArchived"]));
+    return renderToon({ statuses: parsed.full ? extractData(result) : compactRows("statuses", extractData(result)) });
   }
   if (subcommand === "save") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'statuses save --type project --project Roadmap --health onTrack --body "Update"' });
     if (parsed.help) return statusSaveHelp();
     if (!parsed.type) throw usage("--type is required", ["Run `linear-axi statuses save --type project --project <project> --body \"...\"`"]);
-    const result = await runtime.client.callTool("save_status_update", collectKnownArgs(parsed, ["id", "type", "project", "initiative", "health", "body"]));
+    const result = await callAvailableTool(runtime, ["save_status_update"], collectKnownArgs(parsed, ["id", "type", "project", "initiative", "health", "body"]));
     return renderToon({ status: extractData(result) });
   }
   if (subcommand === "delete") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: "statuses delete --type project --id <id>" });
     if (parsed.help) return statusDeleteHelp();
     if (!parsed.id || !parsed.type) throw usage("--id and --type are required", ["Run `linear-axi statuses delete --type project --id <id>`"]);
-    const result = await runtime.client.callTool("delete_status_update", { id: parsed.id, type: parsed.type });
+    const result = await callAvailableTool(runtime, ["delete_status_update"], { id: parsed.id, type: parsed.type });
     return renderToon({ status: extractData(result) });
   }
   throw usage(`unknown statuses command: ${subcommand}`, ["Run `linear-axi statuses list --type project`"]);
+}
+
+async function authCommand(args, runtime) {
+  const [subcommand, ...rest] = args;
+  if (subcommand === "login") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: "auth login" });
+    if (parsed.help) return authLoginHelp();
+    try {
+      await runtime.client.listTools();
+      return renderToon({ auth: "Linear MCP OAuth already authorized" });
+    } catch (error) {
+      if (error.authorizationUrl) {
+        return renderToon({
+          auth: "Linear MCP OAuth authorization required",
+          url: error.authorizationUrl,
+          help: ["Open the URL, copy the redirected code, then run `linear-axi auth finish --code <code>`"],
+        });
+      }
+      throw error;
+    }
+  }
+  if (subcommand === "finish") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: "auth finish --code <code>" });
+    if (parsed.help) return authFinishHelp();
+    if (!parsed.code) throw usage("--code is required", ["Run `linear-axi auth finish --code <code>`"]);
+    await runtime.client.finishAuth(parsed.code);
+    return renderToon({ auth: "Linear MCP OAuth authorized" });
+  }
+  throw usage(`unknown auth command: ${subcommand ?? ""}`.trim(), [
+    "Run `linear-axi auth login`",
+    "Run `linear-axi auth finish --code <code>`",
+  ]);
+}
+
+async function getIssueDetail(id, runtime) {
+  const listed = await runtime.client.callTool("list_issues", { query: id, limit: 10 });
+  const rawMatches = asArray(extractData(listed)).filter((issue) => issue.id === id || issue.identifier === id);
+  if (rawMatches.length === 0) return null;
+  try {
+    const detailed = await callAvailableTool(runtime, ["get_issue"], { id });
+    return extractData(detailed);
+  } catch (error) {
+    if (!isUnknownToolError(error)) throw error;
+    return rawMatches[0];
+  }
+}
+
+async function callAvailableTool(runtime, candidates, args) {
+  const tools = typeof runtime.client.listTools === "function" ? await runtime.client.listTools() : [];
+  const names = new Set(tools.map((tool) => tool.name));
+  if (names.size > 0 && !candidates.some((candidate) => names.has(candidate))) {
+    throw new ToolUnavailableError(candidates);
+  }
+  const preferred = candidates.find((candidate) => names.has(candidate)) ?? candidates[0];
+  try {
+    return await runtime.client.callTool(preferred, args);
+  } catch (error) {
+    if (!isUnknownToolError(error)) throw error;
+    for (const candidate of candidates) {
+      if (candidate === preferred) continue;
+      try {
+        return await runtime.client.callTool(candidate, args);
+      } catch (candidateError) {
+        if (!isUnknownToolError(candidateError)) throw candidateError;
+      }
+    }
+    throw error;
+  }
+}
+
+function isUnknownToolError(error) {
+  if (error?.toolUnavailable) return true;
+  const message = error && typeof error.message === "string" ? error.message : String(error);
+  return /unknown tool|tool .*not found|method not found|not found.*tool/i.test(message);
+}
+
+class ToolUnavailableError extends Error {
+  constructor(candidates) {
+    super(`Linear MCP server does not expose ${candidates.join(" or ")}`);
+    this.toolUnavailable = true;
+  }
 }
 
 function compactRows(alias, data) {
@@ -384,7 +469,7 @@ function extractData(result) {
 
 function asArray(data) {
   if (Array.isArray(data)) return data;
-  for (const key of ["issues", "projects", "teams", "users", "documents", "comments", "nodes", "items", "data"]) {
+  for (const key of ["issues", "projects", "teams", "users", "documents", "comments", "milestones", "cycles", "statuses", "labels", "releases", "nodes", "items", "data"]) {
     if (Array.isArray(data?.[key])) return data[key];
   }
   if (data && typeof data === "object") return [data];
@@ -454,9 +539,15 @@ function executablePath() {
 
 function normalizeError(error) {
   if (error instanceof AxiError) return error;
+  if (error?.authorizationUrl) {
+    return new AxiError("operational", "Linear MCP OAuth authorization required", [
+      "Run `linear-axi auth login`",
+      "Open the authorization URL and finish with `linear-axi auth finish --code <code>`",
+    ]);
+  }
   return new AxiError("operational", mcpErrorMessage(error), [
     "Run `linear-axi issues list --assignee me` to verify Linear access",
-    "Set LINEAR_AXI_MCP_TOKEN if your MCP endpoint requires a bearer token",
+    "Run `linear-axi auth login` to authorize the default Linear MCP endpoint",
   ]);
 }
 
@@ -470,15 +561,16 @@ function mcpErrorMessage(error) {
 
 function topHelp() {
   return `usage: linear-axi <command>
-commands[10]:
-  issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
+commands[11]:
+  auth, issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
 examples:
   linear-axi
+  linear-axi auth login
   linear-axi issues list --assignee me --limit 25
   linear-axi issues save --id LIN-123 --state Done
   linear-axi comments save --issue LIN-123 --body "Ready for review."
 env[3]:
-  LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN
+  LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE
 `;
 }
 
@@ -552,9 +644,9 @@ examples:
 }
 
 function statusListHelp() {
-  return `usage: linear-axi statuses list --type project|initiative [--project <project> | --initiative <initiative>]
+  return `usage: linear-axi statuses list --team <team> [--full]
 examples:
-  linear-axi statuses list --type project --project "Roadmap"
+  linear-axi statuses list --team ENG
 `;
 }
 
@@ -593,6 +685,20 @@ flags:
 examples:
   linear-axi issues save --title "Fix auth" --team ENG
   linear-axi issues save --id LIN-123 --state Done
+`;
+}
+
+function authLoginHelp() {
+  return `usage: linear-axi auth login
+examples:
+  linear-axi auth login
+`;
+}
+
+function authFinishHelp() {
+  return `usage: linear-axi auth finish --code <code>
+examples:
+  linear-axi auth finish --code <code>
 `;
 }
 
