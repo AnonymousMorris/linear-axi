@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseFlags, AxiError, usage } from "./args.js";
 import { collapseHome, resolveMcpUrl } from "./config.js";
 import { renderToon } from "./format.js";
@@ -44,6 +44,7 @@ export async function run(args, runtime) {
 
   const [command, ...rest] = args;
   if (command === "--help" || command === "-h") return topHelp();
+  if (command === "init") return initCommand(rest, runtime);
   if (command === "auth") return authCommand(rest, runtime);
   if (command === "issues" || command === "issue") return issueCommand(rest, runtime);
   if (command === "comments" || command === "comment") return commentCommand(rest, runtime);
@@ -57,6 +58,7 @@ export async function run(args, runtime) {
 
   throw usage(`unknown command: ${command}`, [
     "Run `linear-axi`",
+    "Run `linear-axi init --project \"<project>\"`",
     "Run `linear-axi issues list`",
     "Run `linear-axi projects list`",
     "Run `linear-axi teams list`",
@@ -83,8 +85,9 @@ async function home(runtime) {
   let issueRows = [];
   let error;
   let authRequired = false;
+  const repoProject = await readRepoProject(runtime.cwd);
   try {
-    const result = await runtime.client.callTool("list_issues", { assignee: "me", limit: 10, orderBy: "updatedAt" });
+    const result = await runtime.client.callTool("list_issues", withRepoProject({ assignee: "me", limit: 10, orderBy: "updatedAt" }, repoProject));
     issueRows = compactIssues(extractData(result)).slice(0, 10);
   } catch (caught) {
     error = mcpErrorMessage(caught);
@@ -95,6 +98,7 @@ async function home(runtime) {
     bin: collapseHome(runtime.binPath),
     description: "AXI wrapper around the configured Linear MCP server",
     mcp: { url: runtime.mcpUrl },
+    ...(repoProject ? { project: repoProject.project } : {}),
   };
 
   if (error) {
@@ -108,12 +112,63 @@ async function home(runtime) {
 
   output.help = [
     ...(authRequired ? ["Run `linear-axi auth login` to authorize Linear MCP access"] : []),
+    ...(repoProject ? [] : ["Run `linear-axi init --project <project>` to bind this repo to a Linear project"]),
     "Run `linear-axi issues list --assignee me --limit 50` to list issues",
     "Run `linear-axi projects list --limit 50` to list projects",
     "Run `linear-axi comments list --issue LIN-123` to list issue comments",
   ];
 
   return renderToon(output);
+}
+
+async function initCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help", "force"], example: 'init --project "Roadmap"' });
+  if (parsed.help) return initHelp();
+  const project = String(parsed.project ?? parsed.positionals[0] ?? "").trim();
+  if (!project) {
+    throw usage("--project is required", ['Run `linear-axi init --project "<project>"`']);
+  }
+  const repo = await findGitRoot(runtime.cwd);
+  if (!repo) {
+    throw usage("current directory is not inside a Git repository", [
+      "Run `git init` first",
+      'Run `linear-axi init --project "<project>"` from a Git repository',
+    ]);
+  }
+
+  const path = join(repo, ".linear-project");
+  let existing;
+  try {
+    existing = await readProjectFile(path);
+  } catch (error) {
+    if (!parsed.force) throw error;
+    existing = null;
+  }
+  if (existing?.project === project) {
+    return renderToon({
+      project: "already initialized",
+      file: collapseHome(path),
+      value: { project },
+      help: ["Run `linear-axi issues list` to list issues for this project"],
+    });
+  }
+  if (existing && !parsed.force) {
+    throw usage(".linear-project already exists with a different project", [
+      `Run \`linear-axi init --project ${formatCommandArg(project)} --force\` to replace it`,
+      "Run `linear-axi issues list --project <project>` to override the repo default once",
+    ]);
+  }
+
+  await writeFile(path, `${JSON.stringify({ project }, null, 2)}\n`, "utf8");
+  return renderToon({
+    project: "initialized",
+    file: collapseHome(path),
+    value: { project },
+    help: [
+      "Run `linear-axi issues list` to list issues for this project",
+      'Run `linear-axi issues save --title "Task" --team "<team>"` to create an issue in this project',
+    ],
+  });
 }
 
 async function issueCommand(args, runtime) {
@@ -168,6 +223,7 @@ async function saveIssueCommand(args, runtime) {
     "priority",
   ]);
   if (parsed.label) toolArgs.labels = parsed.label;
+  if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
   if (parsed["description-file"]) toolArgs.description = await readTextFlag(parsed["description-file"], runtime.cwd);
   if (!toolArgs.id && (!toolArgs.title || !toolArgs.team)) {
     throw usage("creating an issue requires --title and --team", [
@@ -231,6 +287,9 @@ async function aliasListCommand(alias, args, runtime) {
     "includeTeams",
   ]);
   if (!("limit" in toolArgs)) toolArgs.limit = DEFAULT_LIMIT;
+  if (["issues", "documents"].includes(alias)) {
+    await applyRepoProjectDefault(toolArgs, runtime);
+  }
 
   const result = await callAvailableTool(runtime, toolNames, toolArgs);
   const data = extractData(result);
@@ -316,6 +375,7 @@ async function documentCommand(args, runtime) {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'documents save --title "Spec" --team ENG' });
     if (parsed.help) return documentSaveHelp();
     const toolArgs = collectKnownArgs(parsed, ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"]);
+    if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
     if (parsed["content-file"]) toolArgs.content = await readTextFlag(parsed["content-file"], runtime.cwd);
     if (!toolArgs.id && !toolArgs.title) {
       throw usage("creating a document requires --title", ['Run `linear-axi documents save --title "Spec" --team "<team>"`']);
@@ -407,23 +467,29 @@ async function milestoneCommand(args, runtime) {
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: 'milestones list --project "Roadmap"' });
     if (parsed.help) return milestoneListHelp();
-    if (!parsed.project) throw usage("--project is required", ['Run `linear-axi milestones list --project "<project>"`']);
-    const result = await runtime.client.callTool("list_milestones", { project: parsed.project });
+    const toolArgs = collectKnownArgs(parsed, ["project"]);
+    await applyRepoProjectDefault(toolArgs, runtime);
+    if (!toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones list --project "<project>"`']);
+    const result = await runtime.client.callTool("list_milestones", { project: toolArgs.project });
     return renderToon({ milestones: parsed.full ? extractData(result) : compactRows("milestones", extractData(result)) });
   }
   if (subcommand === "view") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'milestones view --project "Roadmap" "Beta"' });
     if (parsed.help) return milestoneViewHelp();
     const query = parsed.positionals[0] ?? parsed.query;
-    if (!parsed.project || !query) throw usage("--project and milestone query are required", ['Run `linear-axi milestones view --project "<project>" "<milestone>"`']);
-    const result = await runtime.client.callTool("get_milestone", { project: parsed.project, query });
+    const toolArgs = collectKnownArgs(parsed, ["project"]);
+    await applyRepoProjectDefault(toolArgs, runtime);
+    if (!toolArgs.project || !query) throw usage("--project and milestone query are required", ['Run `linear-axi milestones view --project "<project>" "<milestone>"`']);
+    const result = await runtime.client.callTool("get_milestone", { project: toolArgs.project, query });
     return renderToon({ milestone: extractData(result) });
   }
   if (subcommand === "save") {
     const parsed = parseFlags(rest, { boolean: ["help"], example: 'milestones save --project "Roadmap" --name "Beta"' });
     if (parsed.help) return milestoneSaveHelp();
-    if (!parsed.project) throw usage("--project is required", ['Run `linear-axi milestones save --project "<project>" --name "<name>"`']);
-    const result = await runtime.client.callTool("save_milestone", collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]));
+    const toolArgs = collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]);
+    if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
+    if (!toolArgs.id && !toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones save --project "<project>" --name "<name>"`']);
+    const result = await runtime.client.callTool("save_milestone", toolArgs);
     const milestone = mutationData(result, [
       'Run `linear-axi milestones save --project "<project>" --name "<name>"`',
       'Run `linear-axi milestones list --project "<project>"` to verify milestones',
@@ -680,6 +746,64 @@ function projectSaveToolArgs(toolName, args) {
     ...projectArgs,
     [projectArgs.id ? "addTeams" : "setTeams"]: [teamRef],
   };
+}
+
+async function applyRepoProjectDefault(toolArgs, runtime) {
+  if (toolArgs.project !== undefined) return;
+  const repoProject = await readRepoProject(runtime.cwd);
+  if (repoProject) toolArgs.project = repoProject.project;
+}
+
+function withRepoProject(toolArgs, repoProject) {
+  if (!repoProject || toolArgs.project !== undefined) return toolArgs;
+  return { ...toolArgs, project: repoProject.project };
+}
+
+async function readRepoProject(cwd) {
+  const repo = await findGitRoot(cwd);
+  if (!repo) return null;
+  return readProjectFile(join(repo, ".linear-project"));
+}
+
+async function readProjectFile(path) {
+  let text;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return null;
+  }
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && typeof parsed.project === "string" && parsed.project.trim()) {
+      return { project: parsed.project.trim() };
+    }
+  } catch {
+    if (!trimmed.includes("\n") && !/^\s*[\[{]/.test(trimmed)) return { project: trimmed };
+  }
+  throw usage(".linear-project must contain JSON with a project string", [
+    'Run `linear-axi init --project "<project>" --force` to repair it',
+  ]);
+}
+
+async function findGitRoot(cwd) {
+  let current = resolve(cwd);
+  while (true) {
+    if (await pathExists(join(current, ".git"))) return current;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+async function pathExists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isUnknownToolError(error) {
@@ -1085,10 +1209,11 @@ function isAuthRequiredError(error) {
 
 function topHelp() {
   return `usage: linear-axi <command>
-commands[11]:
-  auth, issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
+commands[12]:
+  init, auth, issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
 examples:
   linear-axi
+  linear-axi init --project "Roadmap"
   linear-axi auth login
   linear-axi issues list --assignee me --limit 25
   linear-axi projects save --name "Roadmap" --team ENG
@@ -1097,6 +1222,18 @@ examples:
   linear-axi comments save --issue LIN-123 --body "Ready for review."
 env[5]:
   LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE, CODEX_CONFIG
+`;
+}
+
+function initHelp() {
+  return `usage: linear-axi init --project <project> [--force]
+description: Save the current Git repository's default Linear project in .linear-project.
+flags:
+  --project <project>  Linear project id, name, or slug to use by default
+  --force             replace an existing .linear-project value
+examples:
+  linear-axi init --project "Roadmap"
+  linear-axi init --project p_123 --force
 `;
 }
 
@@ -1127,9 +1264,9 @@ function groupHelp(name, subcommands) {
       "linear-axi auth finish --code <code>",
     ],
     milestones: [
-      'linear-axi milestones list --project "Roadmap"',
-      'linear-axi milestones view --project "Roadmap" "Beta"',
-      'linear-axi milestones save --project "Roadmap" --name "Beta"',
+      "linear-axi milestones list",
+      'linear-axi milestones view "Beta"',
+      'linear-axi milestones save --name "Beta"',
     ],
     cycles: ["linear-axi cycles list --team ENG --type current"],
     statuses: ["linear-axi statuses list --team ENG"],
@@ -1173,6 +1310,8 @@ examples:
   linear-axi ${alias} list --limit 25
   linear-axi ${alias} list --fields ${fieldHint(alias)}
   linear-axi ${alias} list --query "auth" --full
+notes:
+  issues and documents use the repo default project from .linear-project unless --project is passed.
 `;
 }
 
@@ -1213,6 +1352,8 @@ flags:
 examples:
   linear-axi documents save --title "Spec" --team ENG --content-file spec.md
   linear-axi documents save --id <id> --content "Updated"
+notes:
+  creates use the repo default project from .linear-project unless --project is passed.
 `;
 }
 
@@ -1245,33 +1386,36 @@ examples:
 }
 
 function milestoneListHelp() {
-  return `usage: linear-axi milestones list --project <project> [--full]
+  return `usage: linear-axi milestones list [--project <project>] [--full]
 flags:
-  --project <project>
+  --project <project>  overrides the repo default project
   --full
 examples:
+  linear-axi milestones list
   linear-axi milestones list --project "Roadmap"
 `;
 }
 
 function milestoneViewHelp() {
-  return `usage: linear-axi milestones view --project <project> <milestone>
+  return `usage: linear-axi milestones view [--project <project>] <milestone>
 flags:
-  --project <project>
+  --project <project>  overrides the repo default project
 examples:
+  linear-axi milestones view "Beta"
   linear-axi milestones view --project "Roadmap" "Beta"
 `;
 }
 
 function milestoneSaveHelp() {
-  return `usage: linear-axi milestones save --project <project> (--id <id> | --name <name>)
+  return `usage: linear-axi milestones save [--project <project>] (--id <id> | --name <name>)
 flags:
   --id <id>
   --name <name>
-  --project <project>
+  --project <project>  overrides the repo default project
   --description <markdown>
   --targetDate <yyyy-mm-dd>
 examples:
+  linear-axi milestones save --name "Beta"
   linear-axi milestones save --project "Roadmap" --name "Beta"
 `;
 }
@@ -1339,6 +1483,8 @@ examples:
   linear-axi issues save --title "Fix auth" --team ENG
   linear-axi issues save --title "Task" --team ENG --project "Roadmap"
   linear-axi issues save --id LIN-123 --state Done
+notes:
+  creates use the repo default project from .linear-project unless --project is passed.
 `;
 }
 

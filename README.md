@@ -13,19 +13,30 @@ By default the CLI reads the Linear MCP URL from `[mcp_servers.linear].url` in `
 
 The default remote Linear MCP endpoint uses OAuth. Run `linear-axi auth login`, open the returned URL, and the CLI will capture the localhost callback and save tokens automatically. In a headless environment, run `linear-axi auth login --manual`, open the URL, copy the `code` from the failed localhost redirect, then finish with `linear-axi auth finish --code <code>`. Set `LINEAR_AXI_MCP_URL` to use a different MCP endpoint, or `CODEX_CONFIG` to read the URL from another Codex config file. Set `LINEAR_AXI_MCP_TOKEN` or `LINEAR_MCP_TOKEN` only when your endpoint expects a bearer token. Set `LINEAR_AXI_AUTH_FILE` to store OAuth state somewhere other than `${XDG_CONFIG_HOME:-~/.config}/linear-axi/oauth.json`.
 
+## Project setup
+
+Run this once from a Git repository to bind the repo to its Linear project:
+
+```sh
+linear-axi init --project "Roadmap"
+```
+
+This writes `.linear-project` at the Git root as JSON, for example `{ "project": "Roadmap" }`. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues save ...`, `linear-axi documents list`, `linear-axi documents save ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
+
 ## Commands
 
 The CLI is organized as `linear-axi <resource> <action>`. Internally each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` or any command with `--help` for the focused flag reference.
 
 ```sh
 linear-axi
+linear-axi init --project "Roadmap"
 linear-axi auth login
 linear-axi auth login --manual
 linear-axi auth finish --code <code>
 linear-axi issues list --assignee me --limit 25
 linear-axi issues list --fields id,title,state,assignee
 linear-axi issues view LIN-123 --full
-linear-axi issues save --title "Fix auth" --team ENG --project "Roadmap"
+linear-axi issues save --title "Fix auth" --team ENG
 linear-axi issues save --id LIN-123 --state Done
 linear-axi projects list --query roadmap
 linear-axi projects save --name "Roadmap" --team ENG
@@ -36,9 +47,9 @@ linear-axi comments list --issue LIN-123
 linear-axi comments save --issue LIN-123 --body "Ready for review."
 linear-axi documents view <id>
 linear-axi documents save --title "Spec" --team ENG --content-file spec.md
-linear-axi milestones list --project "Roadmap"
-linear-axi milestones view --project "Roadmap" "Beta"
-linear-axi milestones save --project "Roadmap" --name "Beta"
+linear-axi milestones list
+linear-axi milestones view "Beta"
+linear-axi milestones save --name "Beta"
 linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
 ```
