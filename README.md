@@ -36,27 +36,30 @@ linear-axi auth finish --code <code>
 linear-axi issues list --assignee me --limit 25
 linear-axi issues list --fields id,title,state,assignee
 linear-axi issues view LIN-123 --full
-linear-axi issues save --title "Fix auth" --team ENG
-linear-axi issues save --id LIN-123 --state Done
+linear-axi issues create --title "Fix auth" --team ENG --project "Roadmap"
+linear-axi issues update --id LIN-123 --state Done
 linear-axi projects list --query roadmap
-linear-axi projects save --name "Roadmap" --team ENG
+linear-axi projects create --name "Roadmap" --team ENG
+linear-axi projects update --id <id> --summary "Updated scope"
 linear-axi teams list
 linear-axi users list --query morris
 linear-axi labels list --team ENG
 linear-axi comments list --issue LIN-123
-linear-axi comments save --issue LIN-123 --body "Ready for review."
+linear-axi comments create --issue LIN-123 --body "Ready for review."
 linear-axi documents view <id>
-linear-axi documents save --title "Spec" --team ENG --content-file spec.md
-linear-axi milestones list
-linear-axi milestones view "Beta"
-linear-axi milestones save --name "Beta"
+linear-axi documents create --title "Spec" --team ENG --content-file spec.md
+linear-axi documents update --id <id> --content "Updated"
+linear-axi milestones list --project "Roadmap"
+linear-axi milestones view --project "Roadmap" "Beta"
+linear-axi milestones create --project "Roadmap" --name "Beta"
+linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>
 linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
 ```
 
 List commands use a compact schema by default. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response.
 
-Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Mutation commands return compact success objects with the id, title/name, URL, and next-step hints. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
+Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Mutation commands return compact success objects with the id, title/name, URL, and next-step hints. Use `create` for new objects and `update` for edits; old resource `save` commands return structured usage guidance instead of mutating. Updates verify the target exists before mutating, and comment creates verify the issue exists before adding the comment. Issue and project creates check for existing same-name items and return conflict hints when a likely duplicate already exists. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
 
 The default Linear MCP server does not expose releases or status mutations, so `linear-axi releases ...`, `linear-axi statuses save`, and `linear-axi statuses delete` return structured usage errors instead of calling the server.
 

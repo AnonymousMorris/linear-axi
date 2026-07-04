@@ -166,14 +166,14 @@ async function initCommand(args, runtime) {
     value: { project },
     help: [
       "Run `linear-axi issues list` to list issues for this project",
-      'Run `linear-axi issues save --title "Task" --team "<team>"` to create an issue in this project',
+      'Run `linear-axi issues create --title "Task" --team "<team>"` to create an issue in this project',
     ],
   });
 }
 
 async function issueCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("issues", ["list", "view", "save"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("issues", ["list", "view", "create", "update"]);
   if (!subcommand || subcommand === "list") {
     return aliasListCommand("issues", rest, runtime);
   }
@@ -196,18 +196,71 @@ async function issueCommand(args, runtime) {
     });
   }
   if (subcommand === "save") {
-    return saveIssueCommand(rest, runtime);
+    return removedSaveCommand("issues", rest, [
+      'Run `linear-axi issues create --title "Title" --team "<team>"`',
+      'Run `linear-axi issues update --id LIN-123 --state "Done"`',
+    ]);
+  }
+  if (subcommand === "create") {
+    return createIssueCommand(rest, runtime);
+  }
+  if (subcommand === "update") {
+    return updateIssueCommand(rest, runtime);
   }
   throw usage(`unknown issues command: ${subcommand}`, [
     "Run `linear-axi issues list`",
     "Run `linear-axi issues view <id>`",
-    "Run `linear-axi issues save --id <id> --state done`",
+    "Run `linear-axi issues update --id <id> --state done`",
   ]);
 }
 
-async function saveIssueCommand(args, runtime) {
-  const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'issues save --title "Bug" --team ENG' });
-  if (parsed.help) return issueSaveHelp();
+async function createIssueCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'issues create --title "Bug" --team ENG' });
+  if (parsed.help) return issueCreateHelp();
+  rejectIdOnCreate("create", "issue", [
+    'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
+    'Run `linear-axi issues update --id LIN-123 --state "Done"` to edit an existing issue',
+  ], parsed);
+  const toolArgs = collectKnownArgs(parsed, [
+    "title",
+    "team",
+    "description",
+    "state",
+    "assignee",
+    "project",
+    "cycle",
+    "parentId",
+    "dueDate",
+    "estimate",
+    "priority",
+  ]);
+  if (parsed.label) toolArgs.labels = parsed.label;
+  if (parsed["description-file"]) toolArgs.description = await readTextFlag(parsed["description-file"], runtime.cwd);
+  await applyRepoProjectDefault(toolArgs, runtime);
+  if (!toolArgs.title || !toolArgs.team) {
+    throw usage("creating an issue requires --title and --team", [
+      'Run `linear-axi issues create --title "Title" --team "<team>"`',
+      'Run `linear-axi issues list --team "<team>" --query "Title"` to check existing issues',
+    ]);
+  }
+  await ensureIssueDoesNotExist(toolArgs.title, toolArgs.team, runtime);
+  const result = await runtime.client.callTool("save_issue", toolArgs);
+  const issue = mutationData(result, [
+    'Run `linear-axi issues create --title "Title" --team "<team>"`',
+    "Run `linear-axi projects list --full` to confirm project/team compatibility",
+  ]);
+  return renderToon({
+    issue: compactIssueMutation(issue),
+    help: [
+      `Run \`linear-axi issues view ${issue.identifier ?? issue.id ?? "<id>"}\` to verify details`,
+      `Run \`linear-axi comments create --issue ${issue.identifier ?? issue.id ?? "<id>"} --body "..."\` to add context`,
+    ],
+  });
+}
+
+async function updateIssueCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'issues update --id LIN-123 --state Done' });
+  if (parsed.help) return issueUpdateHelp();
   const toolArgs = collectKnownArgs(parsed, [
     "id",
     "title",
@@ -225,23 +278,21 @@ async function saveIssueCommand(args, runtime) {
   if (parsed.label) toolArgs.labels = parsed.label;
   if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
   if (parsed["description-file"]) toolArgs.description = await readTextFlag(parsed["description-file"], runtime.cwd);
-  if (!toolArgs.id && (!toolArgs.title || !toolArgs.team)) {
-    throw usage("creating an issue requires --title and --team", [
-      'Run `linear-axi issues save --title "Title" --team "<team>"`',
-      'Run `linear-axi issues save --id LIN-123 --state "Done"`',
+  if (!toolArgs.id) {
+    throw usage("updating an issue requires --id", [
+      'Run `linear-axi issues update --id LIN-123 --state "Done"`',
+      "Run `linear-axi issues list --query <text>` to find the issue id",
     ]);
   }
+  await ensureIssueExists(toolArgs.id, runtime);
   const result = await runtime.client.callTool("save_issue", toolArgs);
   const issue = mutationData(result, [
-    'Run `linear-axi issues save --title "Title" --team "<team>"`',
-    "Run `linear-axi projects list --full` to confirm project/team compatibility",
+    'Run `linear-axi issues update --id LIN-123 --state "Done"`',
+    "Run `linear-axi issues list --query <text>` to find the issue id",
   ]);
   return renderToon({
     issue: compactIssueMutation(issue),
-    help: [
-      `Run \`linear-axi issues view ${issue.identifier ?? issue.id ?? "<id>"}\` to verify details`,
-      `Run \`linear-axi comments save --issue ${issue.identifier ?? issue.id ?? "<id>"} --body "..."\` to add context`,
-    ],
+    help: [`Run \`linear-axi issues view ${issue.identifier ?? issue.id ?? toolArgs.id}\` to verify details`],
   });
 }
 
@@ -320,42 +371,60 @@ async function aliasListCommand(alias, args, runtime) {
 
 async function projectCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("projects", ["list", "save"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("projects", ["list", "create", "update"]);
   if (!subcommand || subcommand === "list") return aliasListCommand("projects", rest, runtime);
   if (subcommand === "save") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: 'projects save --name "Roadmap" --team ENG' });
-    if (parsed.help) return projectSaveHelp();
+    return removedSaveCommand("projects", rest, [
+      'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
+      'Run `linear-axi projects update --id <id> --summary "Updated scope"`',
+    ]);
+  }
+  if (subcommand === "create" || subcommand === "update") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: `projects ${subcommand} --name "Roadmap" --team ENG` });
+    if (parsed.help) return subcommand === "create" ? projectCreateHelp() : projectUpdateHelp();
+    rejectIdOnCreate(subcommand, "project", [
+      'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
+      'Run `linear-axi projects update --id <id> --summary "Updated scope"` to edit an existing project',
+    ], parsed);
     const toolArgs = collectKnownArgs(parsed, ["id", "name", "team", "teamId", "summary", "description", "state", "status", "lead", "startDate", "targetDate"]);
-    if (!toolArgs.id && (!toolArgs.name || !(toolArgs.team ?? toolArgs.teamId))) {
+    if (subcommand === "create" && (!toolArgs.name || !(toolArgs.team ?? toolArgs.teamId))) {
       throw usage("creating a project requires --name and --team", [
-        'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
+        'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
         "Run `linear-axi teams list --fields id,name,key` to choose a team",
       ]);
     }
-    const result = toolArgs.id
+    if (subcommand === "update" && !toolArgs.id) {
+      throw usage("updating a project requires --id", [
+        'Run `linear-axi projects update --id <id> --summary "Updated scope"`',
+        'Run `linear-axi projects list --query "Roadmap" --fields id,name,status` to find the project id',
+      ]);
+    }
+    if (subcommand === "create") await ensureProjectDoesNotExist(toolArgs.name, toolArgs.team ?? toolArgs.teamId, runtime);
+    else await ensureProjectExists(toolArgs.id, runtime);
+    const result = subcommand === "update"
       ? await callAvailableTool(runtime, ["update_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs))
       : await callAvailableTool(runtime, ["create_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs));
     const project = mutationData(result, [
-      'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
+      'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
       "Run `linear-axi teams list --fields id,name,key` to choose a team",
     ]);
     return renderToon({
       project: compactProjectMutation(project),
       help: [
         `Run \`linear-axi projects list --query ${formatCommandArg(project.name ?? "<name>")} --full\` to verify details`,
-        `Run \`linear-axi issues save --title "Task" --team "<team>" --project ${formatCommandArg(project.name ?? "<project>")}\` to add an issue`,
+        `Run \`linear-axi issues create --title "Task" --team "<team>" --project ${formatCommandArg(project.name ?? "<project>")}\` to add an issue`,
       ],
     });
   }
   throw usage(`unknown projects command: ${subcommand}`, [
     "Run `linear-axi projects list`",
-    'Run `linear-axi projects save --name "Roadmap" --team "<team>"`',
+    'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
   ]);
 }
 
 async function documentCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("documents", ["list", "view", "save"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("documents", ["list", "view", "create", "update"]);
   if (!subcommand || subcommand === "list") return aliasListCommand("documents", rest, runtime);
   if (subcommand === "view") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "documents view <id>" });
@@ -372,19 +441,36 @@ async function documentCommand(args, runtime) {
     });
   }
   if (subcommand === "save") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: 'documents save --title "Spec" --team ENG' });
-    if (parsed.help) return documentSaveHelp();
+    return removedSaveCommand("documents", rest, [
+      'Run `linear-axi documents create --title "Spec" --team "<team>" --content-file spec.md`',
+      'Run `linear-axi documents update --id <id> --content "Updated"`',
+    ]);
+  }
+  if (subcommand === "create" || subcommand === "update") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: `documents ${subcommand} --title "Spec" --team ENG` });
+    if (parsed.help) return subcommand === "create" ? documentCreateHelp() : documentUpdateHelp();
+    rejectIdOnCreate(subcommand, "document", [
+      'Run `linear-axi documents create --title "Spec" --team "<team>" --content-file spec.md`',
+      'Run `linear-axi documents update --id <id> --content "Updated"` to edit an existing document',
+    ], parsed);
     const toolArgs = collectKnownArgs(parsed, ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"]);
     if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
     if (parsed["content-file"]) toolArgs.content = await readTextFlag(parsed["content-file"], runtime.cwd);
-    if (!toolArgs.id && !toolArgs.title) {
-      throw usage("creating a document requires --title", ['Run `linear-axi documents save --title "Spec" --team "<team>"`']);
+    if (subcommand === "create" && !toolArgs.title) {
+      throw usage("creating a document requires --title", ['Run `linear-axi documents create --title "Spec" --team "<team>"`']);
     }
-    const result = toolArgs.id
+    if (subcommand === "update" && !toolArgs.id) {
+      throw usage("updating a document requires --id", [
+        'Run `linear-axi documents update --id <id> --content "Updated"`',
+        "Run `linear-axi documents list --query <text>` to find the document id",
+      ]);
+    }
+    if (subcommand === "update") await ensureDocumentExists(toolArgs.id, runtime);
+    const result = subcommand === "update"
       ? await callAvailableTool(runtime, ["update_document", "save_document"], toolArgs)
       : await callAvailableTool(runtime, ["create_document", "save_document"], toolArgs);
     const document = mutationData(result, [
-      'Run `linear-axi documents save --title "Spec" --team "<team>" --content-file spec.md`',
+      'Run `linear-axi documents create --title "Spec" --team "<team>" --content-file spec.md`',
       "Run `linear-axi documents view <id>` to read a document",
     ]);
     return renderToon({
@@ -392,12 +478,12 @@ async function documentCommand(args, runtime) {
       help: [`Run \`linear-axi documents view ${document.id ?? "<id>"}\` to verify details`],
     });
   }
-  throw usage(`unknown documents command: ${subcommand}`, ["Run `linear-axi documents list`", "Run `linear-axi documents view <id>`", "Run `linear-axi documents save --title \"Spec\" --team ENG`"]);
+  throw usage(`unknown documents command: ${subcommand}`, ["Run `linear-axi documents list`", "Run `linear-axi documents view <id>`", "Run `linear-axi documents create --title \"Spec\" --team ENG`"]);
 }
 
 async function commentCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("comments", ["list", "save"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("comments", ["list", "create"]);
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "comments list --issue LIN-123" });
     if (parsed.help) return commentListHelp();
@@ -415,7 +501,7 @@ async function commentCommand(args, runtime) {
     const rowCount = asArray(data).length;
     const page = paginationInfo(data, rowCount);
     const commentsValue = Array.isArray(rows) && rows.length === 0 ? `0 comments found for ${parsed.issue}` : rows;
-    const help = [`Run \`linear-axi comments save --issue ${parsed.issue} --body "..."\` to add a comment`];
+    const help = [`Run \`linear-axi comments create --issue ${parsed.issue} --body "..."\` to add a comment`];
     if (!parsed.full && Array.isArray(rows) && rows.some((comment) => comment.truncated)) {
       help.push(`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`);
     }
@@ -430,23 +516,27 @@ async function commentCommand(args, runtime) {
     });
   }
   if (subcommand === "save") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: 'comments save --issue LIN-123 --body "Ready"' });
-    if (parsed.help) return commentSaveHelp();
+    return removedSaveCommand("comments", rest, ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
+  }
+  if (subcommand === "create") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: 'comments create --issue LIN-123 --body "Ready"' });
+    if (parsed.help) return commentCreateHelp();
     rejectUnsupportedCommentFlags(parsed);
     if (parsed.id) {
-      throw usage("comments save supports issue comments only", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
+      throw usage("comments create supports issue comments only", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
     }
     if (!parsed.issue) {
-      throw usage("comments save requires --issue", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
+      throw usage("comments create requires --issue", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
     }
     const toolArgs = { issueId: parsed.issue };
     toolArgs.body = parsed.body ?? (parsed["body-file"] ? await readTextFlag(parsed["body-file"], runtime.cwd) : undefined);
     if (!toolArgs.body) {
-      throw usage("--body or --body-file is required", ['Run `linear-axi comments save --issue LIN-123 --body "Ready"`']);
+      throw usage("--body or --body-file is required", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
     }
+    await ensureIssueExists(parsed.issue, runtime);
     const result = await runtime.client.callTool("save_comment", toolArgs);
     const comment = mutationData(result, [
-      'Run `linear-axi comments save --issue LIN-123 --body "Ready"`',
+      'Run `linear-axi comments create --issue LIN-123 --body "Ready"`',
       `Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)}\` to verify comments`,
     ]);
     const compact = compactCommentMutation(comment);
@@ -458,12 +548,12 @@ async function commentCommand(args, runtime) {
       ],
     });
   }
-  throw usage(`unknown comments command: ${subcommand}`, ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments save --issue LIN-123 --body \"...\"`"]);
+  throw usage(`unknown comments command: ${subcommand}`, ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments create --issue LIN-123 --body \"...\"`"]);
 }
 
 async function milestoneCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("milestones", ["list", "view", "save"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("milestones", ["list", "view", "create", "update"]);
   if (!subcommand || subcommand === "list") {
     const parsed = parseFlags(rest, { boolean: ["help", "full"], example: 'milestones list --project "Roadmap"' });
     if (parsed.help) return milestoneListHelp();
@@ -484,14 +574,27 @@ async function milestoneCommand(args, runtime) {
     return renderToon({ milestone: extractData(result) });
   }
   if (subcommand === "save") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: 'milestones save --project "Roadmap" --name "Beta"' });
-    if (parsed.help) return milestoneSaveHelp();
+    return removedSaveCommand("milestones", rest, [
+      'Run `linear-axi milestones create --project "<project>" --name "<name>"`',
+      'Run `linear-axi milestones update --project "<project>" --id <id> --targetDate <yyyy-mm-dd>`',
+    ]);
+  }
+  if (subcommand === "create" || subcommand === "update") {
+    const parsed = parseFlags(rest, { boolean: ["help"], example: `milestones ${subcommand} --project "Roadmap" --name "Beta"` });
+    if (parsed.help) return subcommand === "create" ? milestoneCreateHelp() : milestoneUpdateHelp();
+    rejectIdOnCreate(subcommand, "milestone", [
+      'Run `linear-axi milestones create --project "<project>" --name "<name>"`',
+      'Run `linear-axi milestones update --project "<project>" --id <id>` to edit an existing milestone',
+    ], parsed);
     const toolArgs = collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]);
-    if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
-    if (!toolArgs.id && !toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones save --project "<project>" --name "<name>"`']);
+    if (subcommand === "create") await applyRepoProjectDefault(toolArgs, runtime);
+    if (!toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones create --project "<project>" --name "<name>"`']);
+    if (subcommand === "create" && !toolArgs.name) throw usage("creating a milestone requires --name", ['Run `linear-axi milestones create --project "<project>" --name "<name>"`']);
+    if (subcommand === "update" && !toolArgs.id) throw usage("updating a milestone requires --id", ['Run `linear-axi milestones update --project "<project>" --id <id>`']);
+    if (subcommand === "update") await ensureMilestoneExists(toolArgs.project, toolArgs.id, runtime);
     const result = await runtime.client.callTool("save_milestone", toolArgs);
     const milestone = mutationData(result, [
-      'Run `linear-axi milestones save --project "<project>" --name "<name>"`',
+      'Run `linear-axi milestones create --project "<project>" --name "<name>"`',
       'Run `linear-axi milestones list --project "<project>"` to verify milestones',
     ]);
     return renderToon({ milestone });
@@ -559,7 +662,7 @@ function removedResourceCommand(command) {
 function removedStatusCommand(subcommand) {
   throw usage(`statuses ${subcommand} is not supported by the default Linear MCP server`, [
     "Run `linear-axi statuses list --team <team>`",
-    "Run `linear-axi issues save --id <id> --state <state>`",
+    "Run `linear-axi issues update --id <id> --state <state>`",
   ]);
 }
 
@@ -702,7 +805,8 @@ async function startOAuthCallbackServer(callbackUrl, timeoutMs, expectedState) {
 async function getIssueDetail(id, runtime) {
   try {
     const detailed = await callAvailableTool(runtime, ["get_issue"], { id });
-    return extractData(detailed);
+    const data = extractData(detailed);
+    return isEmptyObject(data) ? null : data;
   } catch (error) {
     if (!isUnknownToolError(error)) throw error;
   }
@@ -711,6 +815,58 @@ async function getIssueDetail(id, runtime) {
   const rawMatches = asArray(extractData(listed)).filter((issue) => issue.id === id || issue.identifier === id);
   if (rawMatches.length === 0) return null;
   return rawMatches[0];
+}
+
+async function ensureIssueExists(id, runtime) {
+  const issue = await getIssueDetail(id, runtime);
+  if (!issue) {
+    throw new AxiError("operational", `issue not found: ${id}`, [
+      `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
+      "Run `linear-axi issues create --title \"Title\" --team \"<team>\"` to create a new issue",
+    ]);
+  }
+  return issue;
+}
+
+async function ensureIssueDoesNotExist(title, team, runtime) {
+  const listed = await runtime.client.callTool("list_issues", { query: title, team, limit: 10 });
+  const match = asArray(extractData(listed)).find((issue) => isSameText(issue.title, title) && belongsToTeam(issue, team));
+  if (!match) return;
+  const id = match.identifier ?? match.id ?? "<id>";
+  throw new AxiError("operational", `issue already exists: ${id} ${match.title ?? title}`, [
+    `Run \`linear-axi issues view ${id}\` to inspect the existing issue`,
+    `Run \`linear-axi issues update --id ${id} --state "<state>"\` to edit it`,
+    `Run \`linear-axi issues create --title ${formatCommandArg(`${title} copy`)} --team ${formatCommandArg(team)}\` to create a distinct issue`,
+  ]);
+}
+
+async function getProjectDetail(id, runtime) {
+  const listed = await runtime.client.callTool("list_projects", { query: id, limit: 10 });
+  const matches = asArray(extractData(listed)).filter((project) => project.id === id || project.slugId === id || isSameText(project.name, id));
+  return matches[0] ?? null;
+}
+
+async function ensureProjectExists(id, runtime) {
+  const project = await getProjectDetail(id, runtime);
+  if (!project) {
+    throw new AxiError("operational", `project not found: ${id}`, [
+      `Run \`linear-axi projects list --query ${formatCommandArg(id)} --fields id,name,status\` to search for the project`,
+      'Run `linear-axi projects create --name "Roadmap" --team "<team>"` to create a new project',
+    ]);
+  }
+  return project;
+}
+
+async function ensureProjectDoesNotExist(name, team, runtime) {
+  const listed = await runtime.client.callTool("list_projects", { query: name, limit: 10 });
+  const match = asArray(extractData(listed)).find((project) => isSameText(project.name, name) && belongsToTeam(project, team));
+  if (!match) return;
+  const id = match.id ?? match.slugId ?? "<id>";
+  throw new AxiError("operational", `project already exists: ${id} ${match.name ?? name}`, [
+    `Run \`linear-axi projects list --query ${formatCommandArg(name)} --full\` to inspect matching projects`,
+    `Run \`linear-axi projects update --id ${id} --summary "Updated scope"\` to edit it`,
+    `Run \`linear-axi projects create --name ${formatCommandArg(`${name} copy`)} --team ${formatCommandArg(team)}\` to create a distinct project`,
+  ]);
 }
 
 async function callAvailableTool(runtime, candidates, args) {
@@ -1059,7 +1215,8 @@ function compactDocumentDetail(document, id) {
 async function getDocumentDetail(id, runtime) {
   try {
     const detailed = await callAvailableTool(runtime, ["get_document"], { id });
-    return sanitizeDocument(extractData(detailed), id);
+    const data = extractData(detailed);
+    return isEmptyObject(data) ? null : sanitizeDocument(data, id);
   } catch (error) {
     if (!isUnknownToolError(error)) throw error;
   }
@@ -1068,6 +1225,55 @@ async function getDocumentDetail(id, runtime) {
   const rawMatches = asArray(extractData(listed)).filter((document) => document.id === id || document.slugId === id);
   if (rawMatches.length === 0) return null;
   return sanitizeDocument(rawMatches[0], id);
+}
+
+async function ensureDocumentExists(id, runtime) {
+  const document = await getDocumentDetail(id, runtime);
+  if (!document) {
+    throw new AxiError("operational", `document not found: ${id}`, [
+      `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
+      'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
+    ]);
+  }
+  return document;
+}
+
+async function ensureMilestoneExists(project, id, runtime) {
+  const result = await runtime.client.callTool("get_milestone", { project, query: id });
+  const milestone = extractData(result);
+  if (!milestone || (typeof milestone === "object" && Object.keys(milestone).length === 0)) {
+    throw new AxiError("operational", `milestone not found: ${id}`, [
+      `Run \`linear-axi milestones list --project ${formatCommandArg(project)}\` to find the milestone id`,
+      `Run \`linear-axi milestones create --project ${formatCommandArg(project)} --name "<name>"\` to create a new milestone`,
+    ]);
+  }
+  return milestone;
+}
+
+function isSameText(left, right) {
+  return String(left ?? "").trim().toLocaleLowerCase() === String(right ?? "").trim().toLocaleLowerCase();
+}
+
+function isEmptyObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+function belongsToTeam(item, team) {
+  if (team === undefined || team === null || team === "") return true;
+  const expected = String(team).trim().toLocaleLowerCase();
+  const candidates = [
+    item.team,
+    item.team?.id,
+    item.team?.key,
+    item.team?.name,
+    item.teamId,
+    ...(Array.isArray(item.teams) ? item.teams.flatMap((entry) => [entry, entry?.id, entry?.key, entry?.name]) : []),
+  ];
+  return candidates.some((candidate) => String(candidate ?? "").trim().toLocaleLowerCase() === expected);
+}
+
+function removedSaveCommand(resource, _args, help) {
+  throw usage(`linear-axi ${resource} save has been replaced by explicit create and update commands`, help);
 }
 
 function sanitizeDocument(document, id) {
@@ -1129,7 +1335,7 @@ function rejectUnsupportedCommentFlags(parsed) {
   if (unsupported) {
     throw usage(`--${unsupported} is not supported for comments`, [
       "Run `linear-axi comments list --issue LIN-123`",
-      'Run `linear-axi comments save --issue LIN-123 --body "Ready"`',
+      'Run `linear-axi comments create --issue LIN-123 --body "Ready"`',
     ]);
   }
 }
@@ -1140,6 +1346,13 @@ function collectKnownArgs(parsed, names) {
     if (parsed[name] !== undefined) collected[name] = coerceArg(name, parsed[name]);
   }
   return collected;
+}
+
+function rejectIdOnCreate(subcommand, resource, help, parsed) {
+  if (subcommand === "create" && parsed.id !== undefined) {
+    const article = /^[aeiou]/i.test(resource) ? "an" : "a";
+    throw usage(`creating ${article} ${resource} does not accept --id`, help);
+  }
 }
 
 function coerceArg(name, value) {
@@ -1216,10 +1429,10 @@ examples:
   linear-axi init --project "Roadmap"
   linear-axi auth login
   linear-axi issues list --assignee me --limit 25
-  linear-axi projects save --name "Roadmap" --team ENG
+  linear-axi projects create --name "Roadmap" --team ENG
   linear-axi documents view <id>
-  linear-axi issues save --id LIN-123 --state Done
-  linear-axi comments save --issue LIN-123 --body "Ready for review."
+  linear-axi issues update --id LIN-123 --state Done
+  linear-axi comments create --issue LIN-123 --body "Ready for review."
 env[5]:
   LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE, CODEX_CONFIG
 `;
@@ -1242,21 +1455,24 @@ function groupHelp(name, subcommands) {
     issues: [
       "linear-axi issues list --assignee me --limit 25",
       "linear-axi issues view LIN-123",
-      'linear-axi issues save --title "Fix auth" --team ENG',
+      'linear-axi issues create --title "Fix auth" --team ENG',
+      "linear-axi issues update --id LIN-123 --state Done",
     ],
     projects: [
       "linear-axi projects list --limit 25",
-      'linear-axi projects save --name "Roadmap" --team ENG',
-      'linear-axi issues save --title "Task" --team ENG --project "Roadmap"',
+      'linear-axi projects create --name "Roadmap" --team ENG',
+      'linear-axi projects update --id <id> --summary "Updated scope"',
+      'linear-axi issues create --title "Task" --team ENG --project "Roadmap"',
     ],
     documents: [
       "linear-axi documents list --limit 25",
       "linear-axi documents view <id>",
-      'linear-axi documents save --title "Spec" --team ENG --content-file spec.md',
+      'linear-axi documents create --title "Spec" --team ENG --content-file spec.md',
+      'linear-axi documents update --id <id> --content "Updated"',
     ],
     comments: [
       "linear-axi comments list --issue LIN-123",
-      'linear-axi comments save --issue LIN-123 --body "Ready for review."',
+      'linear-axi comments create --issue LIN-123 --body "Ready for review."',
     ],
     auth: [
       "linear-axi auth login",
@@ -1264,9 +1480,10 @@ function groupHelp(name, subcommands) {
       "linear-axi auth finish --code <code>",
     ],
     milestones: [
-      "linear-axi milestones list",
-      'linear-axi milestones view "Beta"',
-      'linear-axi milestones save --name "Beta"',
+      'linear-axi milestones list --project "Roadmap"',
+      'linear-axi milestones view --project "Roadmap" "Beta"',
+      'linear-axi milestones create --project "Roadmap" --name "Beta"',
+      'linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>',
     ],
     cycles: ["linear-axi cycles list --team ENG --type current"],
     statuses: ["linear-axi statuses list --team ENG"],
@@ -1328,15 +1545,33 @@ examples:
 `;
 }
 
-function commentSaveHelp() {
-  return `usage: linear-axi comments save --issue <id> (--body <text> | --body-file <path>)
+function commentCreateHelp() {
+  return `usage: linear-axi comments create --issue <id> (--body <text> | --body-file <path>)
 examples:
-  linear-axi comments save --issue LIN-123 --body "Ready for review."
+  linear-axi comments create --issue LIN-123 --body "Ready for review."
 `;
 }
 
-function documentSaveHelp() {
-  return `usage: linear-axi documents save (--id <id> | --title <title>) [parent] [--content <markdown> | --content-file <path>]
+function documentCreateHelp() {
+  return `usage: linear-axi documents create --title <title> [parent] [--content <markdown> | --content-file <path>]
+flags:
+  --title <title>
+  --team <team>
+  --project <project>
+  --issue <issue>
+  --initiative <initiative>
+  --cycle <cycle>
+  --color <color>
+  --icon <icon>
+  --content <markdown>
+  --content-file <path>
+examples:
+  linear-axi documents create --title "Spec" --team ENG --content-file spec.md
+`;
+}
+
+function documentUpdateHelp() {
+  return `usage: linear-axi documents update --id <id> [fields]
 flags:
   --id <id>
   --title <title>
@@ -1350,10 +1585,7 @@ flags:
   --content <markdown>
   --content-file <path>
 examples:
-  linear-axi documents save --title "Spec" --team ENG --content-file spec.md
-  linear-axi documents save --id <id> --content "Updated"
-notes:
-  creates use the repo default project from .linear-project unless --project is passed.
+  linear-axi documents update --id <id> --content "Updated"
 `;
 }
 
@@ -1365,8 +1597,26 @@ examples:
 `;
 }
 
-function projectSaveHelp() {
-  return `usage: linear-axi projects save (--id <id> | --name <name> --team <team>) [fields]
+function projectCreateHelp() {
+  return `usage: linear-axi projects create --name <name> --team <team> [fields]
+flags:
+  --name <name>
+  --team <team>
+  --teamId <team-id>
+  --summary <text>
+  --description <markdown>
+  --state <state>
+  --status <status>
+  --lead <user>
+  --startDate <yyyy-mm-dd>
+  --targetDate <yyyy-mm-dd>
+examples:
+  linear-axi projects create --name "Roadmap" --team ENG
+`;
+}
+
+function projectUpdateHelp() {
+  return `usage: linear-axi projects update --id <id> [fields]
 flags:
   --id <id>
   --name <name>
@@ -1380,8 +1630,7 @@ flags:
   --startDate <yyyy-mm-dd>
   --targetDate <yyyy-mm-dd>
 examples:
-  linear-axi projects save --name "Roadmap" --team ENG
-  linear-axi projects save --id <id> --summary "Updated scope"
+  linear-axi projects update --id <id> --summary "Updated scope"
 `;
 }
 
@@ -1406,8 +1655,20 @@ examples:
 `;
 }
 
-function milestoneSaveHelp() {
-  return `usage: linear-axi milestones save [--project <project>] (--id <id> | --name <name>)
+function milestoneCreateHelp() {
+  return `usage: linear-axi milestones create --project <project> --name <name>
+flags:
+  --name <name>
+  --project <project>
+  --description <markdown>
+  --targetDate <yyyy-mm-dd>
+examples:
+  linear-axi milestones create --project "Roadmap" --name "Beta"
+`;
+}
+
+function milestoneUpdateHelp() {
+  return `usage: linear-axi milestones update --project <project> --id <id> [fields]
 flags:
   --id <id>
   --name <name>
@@ -1415,8 +1676,7 @@ flags:
   --description <markdown>
   --targetDate <yyyy-mm-dd>
 examples:
-  linear-axi milestones save --name "Beta"
-  linear-axi milestones save --project "Roadmap" --name "Beta"
+  linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>
 `;
 }
 
@@ -1462,8 +1722,30 @@ examples:
 `;
 }
 
-function issueSaveHelp() {
-  return `usage: linear-axi issues save (--id <id> | --title <title> --team <team>) [fields]
+function issueCreateHelp() {
+  return `usage: linear-axi issues create --title <title> --team <team> [fields]
+flags:
+  --title <title>
+  --team <team>
+  --state <state>
+  --assignee <user>
+  --project <project>
+  --cycle <cycle>
+  --parentId <issue-id>
+  --label <label> repeatable
+  --priority <number>
+  --estimate <number>
+  --dueDate <yyyy-mm-dd>
+  --description <markdown>
+  --description-file <path>
+examples:
+  linear-axi issues create --title "Fix auth" --team ENG
+  linear-axi issues create --title "Task" --team ENG --project "Roadmap"
+`;
+}
+
+function issueUpdateHelp() {
+  return `usage: linear-axi issues update --id <id> [fields]
 flags:
   --id <id>
   --title <title>
@@ -1480,11 +1762,7 @@ flags:
   --description <markdown>
   --description-file <path>
 examples:
-  linear-axi issues save --title "Fix auth" --team ENG
-  linear-axi issues save --title "Task" --team ENG --project "Roadmap"
-  linear-axi issues save --id LIN-123 --state Done
-notes:
-  creates use the repo default project from .linear-project unless --project is passed.
+  linear-axi issues update --id LIN-123 --state Done
 `;
 }
 
