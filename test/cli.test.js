@@ -30,6 +30,30 @@ test("projects list uses list_projects wrapper", async () => {
   assert.match(output, /p1,Roadmap,started/);
 });
 
+test("list commands support fields and pagination hints", async () => {
+  const output = await run(
+    ["projects", "list", "--fields", "id,name,state"],
+    runtime({
+      callTool: async () => ({
+        structuredContent: {
+          projects: [
+            { id: "p1", name: "Roadmap", state: "started", ignored: "hidden" },
+          ],
+          hasNextPage: true,
+          cursor: "next-page",
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /count: "1 returned, more available"/);
+  assert.match(output, /cursor: next-page/);
+  assert.match(output, /projects\[1\]\{id,name,state\}:/);
+  assert.match(output, /p1,Roadmap,started/);
+  assert.doesNotMatch(output, /ignored/);
+  assert.match(output, /Run `linear-axi projects list --cursor next-page` to continue/);
+});
+
 test("issues list uses list_issues wrapper", async () => {
   let seen;
   const output = await run(
@@ -125,6 +149,54 @@ test("comments save requires an issue", async () => {
   assert.equal(called, false);
 });
 
+test("auth login manual prints authorization url without finishing", async () => {
+  let finished = false;
+  const output = await run(
+    ["auth", "login", "--manual"],
+    runtime({
+      listTools: async () => {
+        const error = new Error("auth required");
+        error.authorizationUrl = "https://linear.example/authorize?code_challenge=test";
+        throw error;
+      },
+      finishAuth: async () => {
+        finished = true;
+      },
+    }),
+  );
+
+  assert.match(output, /auth: Linear MCP OAuth authorization required/);
+  assert.match(output, /url: "https:\/\/linear.example\/authorize\?code_challenge=test"/);
+  assert.equal(finished, false);
+});
+
+test("auth login captures localhost callback and finishes automatically", async () => {
+  const writes = [];
+  const finishedCodes = [];
+  const login = run(
+    ["auth", "login", "--timeout", "5000"],
+    runtime({
+      stdout: { write: (text) => writes.push(text) },
+      listTools: async () => {
+        const error = new Error("auth required");
+        error.authorizationUrl = "https://linear.example/authorize?code_challenge=test";
+        throw error;
+      },
+      finishAuth: async (code) => {
+        finishedCodes.push(code);
+      },
+    }),
+  );
+
+  await waitFor(() => writes.join("").includes("http://127.0.0.1:14566/oauth/callback"));
+  const response = await fetch("http://127.0.0.1:14566/oauth/callback?code=test-code");
+  assert.equal(response.status, 200);
+
+  const output = await login;
+  assert.deepEqual(finishedCodes, ["test-code"]);
+  assert.match(output, /auth: Linear MCP OAuth authorized/);
+});
+
 test("issues view full returns only matching issue detail", async () => {
   const calls = [];
   const output = await run(
@@ -144,6 +216,48 @@ test("issues view full returns only matching issue detail", async () => {
   assert.match(output, /title: Right/);
   assert.match(output, /description: Full body/);
   assert.doesNotMatch(output, /Wrong/);
+});
+
+test("issues view compact output previews long descriptions", async () => {
+  const description = `${"a".repeat(1001)} tail`;
+  const output = await run(
+    ["issues", "view", "LIN-1"],
+    runtime({
+      listTools: async () => [{ name: "get_issue" }],
+      callTool: async () => ({
+        structuredContent: {
+          identifier: "LIN-1",
+          title: "Right",
+          description,
+          assignee: { name: "Morris" },
+          state: { name: "Todo" },
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /issue:/);
+  assert.match(output, /description: ".+\.\.\. \(truncated, 1006 chars total\)"/);
+  assert.match(output, /help\[1\]:\n  Run `linear-axi issues view LIN-1 --full` to show the complete issue/);
+});
+
+test("issues view compact output includes short descriptions without noisy help", async () => {
+  const output = await run(
+    ["issues", "view", "LIN-1"],
+    runtime({
+      listTools: async () => [{ name: "get_issue" }],
+      callTool: async () => ({
+        structuredContent: {
+          identifier: "LIN-1",
+          title: "Right",
+          description: "Short body",
+        },
+      }),
+    }),
+  );
+
+  assert.match(output, /description: Short body/);
+  assert.doesNotMatch(output, /--full/);
 });
 
 test("issues view falls back to exact list match when get_issue is unavailable", async () => {
@@ -278,12 +392,22 @@ test("mcp-shaped tools command is not public cli", async () => {
   );
 });
 
+async function waitFor(predicate) {
+  const started = Date.now();
+  while (Date.now() - started < 3000) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("timed out waiting for condition");
+}
+
 function runtime(client) {
   return {
     cwd: process.cwd(),
     env: {},
     binPath: "/tmp/linear-axi",
     mcpUrl: "https://mcp.linear.app/mcp",
+    stdout: client.stdout,
     client: { close: async () => {}, ...client },
   };
 }

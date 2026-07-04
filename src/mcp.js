@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -88,6 +89,14 @@ export class LinearOAuthProvider {
     };
   }
 
+  async state() {
+    const store = await this.readStore();
+    if (store.state) return store.state;
+    const state = randomBytes(24).toString("base64url");
+    await this.updateStore({ state });
+    return state;
+  }
+
   async clientInformation() {
     return (await this.readStore()).clientInformation;
   }
@@ -122,7 +131,10 @@ export class LinearOAuthProvider {
     const store = await this.readStore();
     if (scope === "all" || scope === "client") delete store.clientInformation;
     if (scope === "all" || scope === "tokens") delete store.tokens;
-    if (scope === "all" || scope === "verifier") delete store.codeVerifier;
+    if (scope === "all" || scope === "verifier") {
+      delete store.codeVerifier;
+      delete store.state;
+    }
     await this.writeStore(store);
   }
 

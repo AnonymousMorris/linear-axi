@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LinearMcpClient, LinearOAuthProvider } from "../src/mcp.js";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 test("remote client uses OAuth provider when no bearer token is configured", () => {
   const client = new LinearMcpClient({ url: "https://mcp.linear.app/mcp" });
@@ -12,4 +15,21 @@ test("remote client keeps bearer token path for token endpoints", () => {
   const client = new LinearMcpClient({ url: "https://example.test/mcp", token: "secret" });
 
   assert.equal(client.authProvider, null);
+});
+
+test("OAuth provider persists state for Linear CSRF validation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "linear-axi-oauth-"));
+  const storePath = join(dir, "oauth.json");
+  const provider = new LinearOAuthProvider({ storePath });
+
+  const first = await provider.state();
+  const second = await provider.state();
+  const store = JSON.parse(await readFile(storePath, "utf8"));
+
+  assert.equal(first, second);
+  assert.equal(store.state, first);
+
+  await provider.invalidateCredentials("verifier");
+  const resetStore = JSON.parse(await readFile(storePath, "utf8"));
+  assert.equal(resetStore.state, undefined);
 });

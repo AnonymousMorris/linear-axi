@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { isAbsolute, resolve } from "node:path";
 import { parseFlags, AxiError, usage } from "./args.js";
 import { collapseHome, resolveMcpUrl } from "./config.js";
@@ -68,6 +69,7 @@ async function makeRuntime(context) {
     env: context.env,
     binPath: executablePath(),
     mcpUrl: url,
+    stdout: context.stdout,
     client: context.client ?? new LinearMcpClient({
       url,
       token: context.env.LINEAR_AXI_MCP_TOKEN ?? context.env.LINEAR_MCP_TOKEN,
@@ -122,7 +124,12 @@ async function issueCommand(args, runtime) {
     if (!id) throw usage("issue id is required", ["Run `linear-axi issues view <id>`"]);
     const detail = await getIssueDetail(id, runtime);
     if (!detail) return renderToon({ issues: `0 issues found for ${id}` });
-    return renderToon({ issue: parsed.full ? detail : compactIssues(detail)[0] });
+    if (parsed.full) return renderToon({ issue: detail });
+    const compact = compactIssueDetail(detail);
+    return renderToon({
+      issue: compact.issue,
+      ...(compact.truncated ? { help: [`Run \`linear-axi issues view ${id} --full\` to show the complete issue`] } : {}),
+    });
   }
   if (subcommand === "save") {
     return saveIssueCommand(rest, runtime);
@@ -207,15 +214,27 @@ async function aliasListCommand(alias, args, runtime) {
 
   const result = await callAvailableTool(runtime, toolNames, toolArgs);
   const data = extractData(result);
-  const rows = parsed.full ? data : compactRows(alias, data);
-  const count = Array.isArray(rows) ? `${rows.length} returned` : "1 returned";
+  const rows = parsed.full
+    ? data
+    : parsed.fields
+      ? selectFields(asArray(data), parseFields(parsed.fields))
+      : compactRows(alias, data);
+  const rowCount = Array.isArray(rows) ? rows.length : 1;
+  const page = paginationInfo(data, rowCount);
+  const listValue = Array.isArray(rows) && rows.length === 0 ? `0 ${publicName} found` : rows;
+  const help = [
+    `Run \`linear-axi ${publicName} list --full\` to show the full response`,
+    `Run \`linear-axi ${publicName} list --fields ${fieldHint(publicName)}\` to choose fields`,
+    `Run \`linear-axi ${publicName} list --query "<text>"\` to search`,
+  ];
+  if (page.cursor) {
+    help.push(`Run \`linear-axi ${publicName} list --cursor ${page.cursor}\` to continue`);
+  }
   return renderToon({
-    count,
-    [publicName]: rows.length === 0 ? `0 ${publicName} found` : rows,
-    help: [
-      `Run \`linear-axi ${publicName} list --full\` to show the full response`,
-      `Run \`linear-axi ${publicName} list --query "<text>"\` to search`,
-    ],
+    count: page.count,
+    ...(page.cursor ? { cursor: page.cursor } : {}),
+    [publicName]: listValue,
+    help,
   });
 }
 
@@ -353,18 +372,22 @@ function removedStatusCommand(subcommand) {
 async function authCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (subcommand === "login") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: "auth login" });
+    const parsed = parseFlags(rest, { boolean: ["help", "manual"], example: "auth login" });
     if (parsed.help) return authLoginHelp();
     try {
       await runtime.client.listTools();
       return renderToon({ auth: "Linear MCP OAuth already authorized" });
     } catch (error) {
       if (error.authorizationUrl) {
-        return renderToon({
-          auth: "Linear MCP OAuth authorization required",
-          url: error.authorizationUrl,
-          help: ["Open the URL, copy the redirected code, then run `linear-axi auth finish --code <code>`"],
-        });
+        if (parsed.manual) {
+          return renderToon({
+            auth: "Linear MCP OAuth authorization required",
+            url: error.authorizationUrl,
+            help: ["Open the URL, copy the code, then run `linear-axi auth finish --code <code>`"],
+          });
+        }
+
+        return completeLoginWithCallback(error.authorizationUrl, runtime, parsed);
       }
       throw error;
     }
@@ -380,6 +403,95 @@ async function authCommand(args, runtime) {
     "Run `linear-axi auth login`",
     "Run `linear-axi auth finish --code <code>`",
   ]);
+}
+
+async function completeLoginWithCallback(authorizationUrl, runtime, parsed) {
+  const timeoutMs = Number(parsed.timeout ?? 300000);
+  const callbackUrl = new URL("http://127.0.0.1:14566/oauth/callback");
+  const server = await startOAuthCallbackServer(callbackUrl, timeoutMs);
+
+  runtime.stdout?.write?.(renderToon({
+    auth: "Linear MCP OAuth authorization required",
+    url: authorizationUrl,
+    callback: callbackUrl.toString(),
+    help: [
+      "Open the URL in a browser to finish automatically",
+      "If callback capture fails, rerun `linear-axi auth login --manual`",
+    ],
+  }));
+
+  try {
+    const code = await server.code;
+    await runtime.client.finishAuth(code);
+    return renderToon({ auth: "Linear MCP OAuth authorized" });
+  } finally {
+    await server.close();
+  }
+}
+
+async function startOAuthCallbackServer(callbackUrl, timeoutMs) {
+  if (callbackUrl.hostname !== "127.0.0.1" && callbackUrl.hostname !== "localhost") {
+    throw usage("OAuth callback must use localhost or 127.0.0.1", ["Run `linear-axi auth login --manual`"]);
+  }
+
+  let timeout;
+  let settled = false;
+  let resolveCode;
+  let rejectCode;
+  const code = new Promise((resolve, reject) => {
+    resolveCode = resolve;
+    rejectCode = reject;
+  });
+
+  const server = createServer((request, response) => {
+    const requestUrl = new URL(request.url, callbackUrl.origin);
+    if (requestUrl.pathname !== callbackUrl.pathname) {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("Not found.\n");
+      return;
+    }
+
+    const error = requestUrl.searchParams.get("error");
+    const authCode = requestUrl.searchParams.get("code");
+    if (error) {
+      response.writeHead(400, { "content-type": "text/plain" });
+      response.end("Linear authorization failed. You can close this tab.\n");
+      finish(new Error(`Linear OAuth error: ${error}`));
+      return;
+    }
+    if (!authCode) {
+      response.writeHead(400, { "content-type": "text/plain" });
+      response.end("Missing OAuth code. You can close this tab.\n");
+      finish(new Error("Linear OAuth callback did not include a code"));
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("Linear authorization captured. You can close this tab.\n");
+    finish(null, authCode);
+  });
+
+  function finish(error, authCode) {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    if (error) rejectCode(error);
+    else resolveCode(authCode);
+  }
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(Number(callbackUrl.port || 80), callbackUrl.hostname, resolve);
+  });
+
+  timeout = setTimeout(() => {
+    finish(new Error("Timed out waiting for Linear OAuth callback"));
+  }, timeoutMs);
+
+  return {
+    code,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
 }
 
 async function getIssueDetail(id, runtime) {
@@ -441,6 +553,52 @@ function compactRows(alias, data) {
   }));
 }
 
+function parseFields(fields) {
+  return fields.split(",").map((field) => field.trim()).filter(Boolean);
+}
+
+function fieldHint(publicName) {
+  if (publicName === "issues") return "id,title,state,assignee";
+  if (publicName === "users") return "id,name,email";
+  return "id,name,state";
+}
+
+function selectFields(items, fields) {
+  return items.map((item) => {
+    const selected = {};
+    for (const field of fields) {
+      selected[field] = fieldValue(item, field);
+    }
+    return selected;
+  });
+}
+
+function fieldValue(item, field) {
+  const value = field.split(".").reduce((current, part) => current?.[part], item);
+  if (value === undefined) return "";
+  if (value === null) return null;
+  if (typeof value === "object") {
+    return value.name ?? value.displayName ?? value.identifier ?? value.id ?? JSON.stringify(value);
+  }
+  return value;
+}
+
+function paginationInfo(data, rowCount) {
+  const total = data?.totalCount ?? data?.total ?? data?.pageInfo?.totalCount;
+  const hasNextPage = Boolean(data?.hasNextPage ?? data?.pageInfo?.hasNextPage);
+  const cursor = data?.cursor ?? data?.nextCursor ?? data?.pageInfo?.endCursor;
+  if (typeof total === "number") {
+    return {
+      count: `${rowCount} of ${total} total`,
+      cursor: hasNextPage ? cursor : undefined,
+    };
+  }
+  return {
+    count: hasNextPage ? `${rowCount} returned, more available` : `${rowCount} returned`,
+    cursor: hasNextPage ? cursor : undefined,
+  };
+}
+
 function compactComments(data) {
   return asArray(data).map((comment) => ({
     id: comment.id ?? "",
@@ -457,6 +615,24 @@ function compactIssues(data) {
     state: issue.state?.name ?? issue.state ?? "",
     assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
   }));
+}
+
+function compactIssueDetail(issue) {
+  const description = String(issue.description ?? issue.body ?? "");
+  const preview = truncate(description, 1000);
+  return {
+    truncated: preview.truncated,
+    issue: {
+      id: issue.identifier ?? issue.id ?? "",
+      title: issue.title ?? "",
+      state: issue.state?.name ?? issue.status ?? issue.state ?? "",
+      assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
+      description: preview.truncated
+        ? `${preview.text}... (truncated, ${description.length} chars total)`
+        : description,
+      url: issue.url ?? "",
+    },
+  };
 }
 
 function extractData(result) {
@@ -560,7 +736,7 @@ examples:
   linear-axi issues list --assignee me --limit 25
   linear-axi issues save --id LIN-123 --state Done
   linear-axi comments save --issue LIN-123 --body "Ready for review."
-env[3]:
+env[4]:
   LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE
 `;
 }
@@ -573,8 +749,10 @@ flags:
   --team <name-or-id>
   --state <name-or-type>
   --orderBy createdAt|updatedAt
+  --fields <comma-separated-fields>
 examples:
   linear-axi ${alias} list --limit 25
+  linear-axi ${alias} list --fields id,name,state
   linear-axi ${alias} list --query "auth" --full
 `;
 }
@@ -664,9 +842,13 @@ examples:
 }
 
 function authLoginHelp() {
-  return `usage: linear-axi auth login
+  return `usage: linear-axi auth login [--manual] [--timeout <ms>]
+flags:
+  --manual print the authorization URL and exit so you can paste the code into auth finish
+  --timeout <ms> default 300000
 examples:
   linear-axi auth login
+  linear-axi auth login --manual
 `;
 }
 

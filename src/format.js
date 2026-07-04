@@ -50,6 +50,13 @@ function renderArray(key, array, depth) {
 
   const primitive = array.every((item) => !Array.isArray(item) && !isPlainObject(item));
   if (primitive) {
+    if (key === "help") {
+      const lines = [`${indent}${name}[${array.length}]:`];
+      for (const item of array) {
+        lines.push(`${indent}  ${formatScalar(item)}`);
+      }
+      return lines;
+    }
     return [`${indent}${name}[${array.length}]: ${array.map(formatScalar).join(",")}`];
   }
 

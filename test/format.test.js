@@ -17,3 +17,10 @@ test("renders tabular arrays with counts", () => {
 test("quotes ambiguous scalar values", () => {
   assert.equal(renderToon({ value: "true", empty: "", text: "hello" }), 'value: "true"\nempty: ""\ntext: hello\n');
 });
+
+test("renders help arrays as multiline hints", () => {
+  assert.equal(
+    renderToon({ help: ["Run `linear-axi issues list`", "Run `linear-axi auth login`"] }),
+    "help[2]:\n  Run `linear-axi issues list`\n  Run `linear-axi auth login`\n",
+  );
+});
