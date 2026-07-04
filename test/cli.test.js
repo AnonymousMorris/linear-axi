@@ -17,9 +17,14 @@ test("top help exposes Linear resource commands", async () => {
 });
 
 test("home auth errors suggest login before list commands", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "linear-axi-home-"));
+  const repo = join(parent, "linear-axi");
+  await mkdir(join(repo, ".git"), { recursive: true });
+
   const output = await run(
     [],
     runtime({
+      cwd: repo,
       callTool: async () => {
         const error = new Error("auth required");
         error.authorizationUrl = "https://linear.example/authorize?state=expected-state";
