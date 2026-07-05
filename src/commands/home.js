@@ -24,6 +24,7 @@ export async function homeCommand(runtime) {
       "Run `linear-axi projects list` to find Linear projects",
       'Run `linear-axi init --project "<project>"` to bind this repo',
       "Run `linear-axi issues list --assignee me` to list your assigned issues across Linear",
+      "Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents",
     ];
     return renderToon(output);
   }

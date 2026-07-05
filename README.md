@@ -97,10 +97,11 @@ description: Linear project dashboard
 repo: my-repo
 project: not initialized
 status: No default Linear project is configured for this repository
-help[3]:
+help[4]:
   Run `linear-axi projects list` to find Linear projects
   Run `linear-axi init --project "<project>"` to bind this repo
   Run `linear-axi issues list --assignee me` to list your assigned issues across Linear
+  Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents
 ```
 
 After initialization, the dashboard shows the configured repo project plus a project-scoped count of issues assigned to you instead of listing issue rows.

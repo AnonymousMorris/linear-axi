@@ -41,6 +41,7 @@ test("home uninitialized repo suggests project setup without global issue count"
   assert.match(output, /Run `linear-axi projects list` to find Linear projects/);
   assert.match(output, /Run `linear-axi init --project "<project>"` to bind this repo/);
   assert.match(output, /Run `linear-axi issues list --assignee me` to list your assigned issues across Linear/);
+  assert.match(output, /Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents/);
   assert.doesNotMatch(output, /assigned to me$/m);
   assert.doesNotMatch(output, /Global issue/);
 });
