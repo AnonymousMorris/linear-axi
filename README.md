@@ -51,7 +51,7 @@ Run this once from a Git repository to bind the repo to its Linear project:
 linear-axi init --project "Roadmap"
 ```
 
-This validates the project in the authenticated Linear workspace and writes `.linear-project` at the Git root as JSON, for example `{ "workspace": "Acme", "project": "Roadmap" }`. The workspace is discovered from Linear; you do not pass it as an argument. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Use `--all-projects` on issue and document list commands when you intentionally want a workspace-wide list. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
+This validates the project in the authenticated Linear workspace and writes `.linear-project` at the Git root as JSON, for example `{ "workspace": "Acme", "project": "Roadmap" }`. The workspace is discovered from Linear; you do not pass it as an argument. Existing files with only `{ "project": "Roadmap" }` or a bare project name are still readable. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Use `--all-projects` on issue and document list commands when you intentionally want a workspace-wide list. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
 
 ## Commands
 
@@ -116,6 +116,8 @@ project: Roadmap
 repo: my-repo
 issues: 3 assigned to me in project
 ```
+
+If the saved default project is not found in the authenticated workspace, the dashboard reports the invalid default and suggests searching the current workspace or replacing `.linear-project`. Project-scoped commands fail with the same `VALIDATION_ERROR` before sending the stale project to Linear.
 
 List commands use a compact schema by default. Empty lists render as `items: []`, counts render as `0 returned` or `1 returned (more available)`, and general resource lists include field-selection hints. Project and issue lists put status first, group matching statuses together, prioritize In Progress/Started before Planned/Todo and Backlog, and keep ids last. Comments lists suggest creating a comment and add a `--full` hint only when body previews are truncated; statuses lists suggest `--full`. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response. Hints are reserved for discovery, pagination, truncation, required follow-up steps such as OAuth, and error recovery.
 

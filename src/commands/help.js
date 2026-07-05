@@ -23,7 +23,7 @@ env[5]:
 
 export function initHelp() {
   return `usage: linear-axi init --project <project> [--force]
-description: Save the current Git repository's default Linear project in .linear-project.
+description: Validate and save the current Git repository's default Linear project in .linear-project.
 flags:
   --project <project>  Linear project id, name, or slug to use by default
   --force             replace an existing .linear-project value
@@ -89,7 +89,7 @@ export function listAliasHelp(alias) {
     : "";
   const projectScopeNote = ["issues", "documents"].includes(alias)
     ? `notes:
-  issues and documents require the repo default project from .linear-project, --project, or --all-projects.
+  issues and documents require a valid repo default project from .linear-project, --project, or --all-projects.
 `
     : "";
   return `usage: linear-axi ${alias} list [filters] [--full]

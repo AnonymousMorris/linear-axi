@@ -25,7 +25,7 @@ Use linear-axi whenever a task touches Linear: listing, viewing, creating, or up
 ## Workflow
 
 1. Run `npx -y linear-axi` with no arguments for a dashboard of the current repo. Uninitialized repos show setup hints instead of workspace-wide issue counts.
-2. List Linear projects with `npx -y linear-axi projects list`, then bind a repository with `npx -y linear-axi init --project "<project>"`; project-scoped commands use `.linear-project` automatically after that.
+2. List Linear projects with `npx -y linear-axi projects list`, then bind a repository with `npx -y linear-axi init --project "<project>"`; this validates the project and stores discovered workspace metadata in `.linear-project`.
 3. Drill in command-first: `issues list`, `issues view <id>`, `projects list`, `documents view <id>`, `comments list --issue <id>`, and so on.
 4. Add `--fields` for columns, `--cursor` for pagination, and `--full` only when complete content is needed.
 5. Every response ends with contextual next-step hints under `help:` - follow them.
@@ -47,4 +47,4 @@ Run `npx -y linear-axi --help` for global flags, `npx -y linear-axi <resource> -
 - Default issue and project lists are grouped by status, show active work first, and keep ids last. Use `--fields` when you need a custom column order.
 - Mutations validate targets and report compact results; re-running a failed mutation is safe.
 - For multi-line markdown descriptions, comments, or documents, write the text to a UTF-8 file and pass `--description-file <path>`, `--body-file <path>`, or `--content-file <path>`.
-- Repository project defaults apply when an issue, document, or milestone command needs a project scope unless `--project <project>` overrides them. Use `--all-projects` on issue and document list commands only when a workspace-wide list is intended.
+- Repository project defaults are validated before an issue, document, or milestone command uses them unless `--project <project>` overrides them. Use `--all-projects` on issue and document list commands only when a workspace-wide list is intended.
