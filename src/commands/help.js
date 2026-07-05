@@ -372,6 +372,7 @@ examples:
 
 export function authLogoutHelp() {
   return `usage: linear-axi auth logout
+description: Remove saved Linear MCP OAuth credentials without changing bearer-token environment variables.
 examples:
   linear-axi auth logout
 `;

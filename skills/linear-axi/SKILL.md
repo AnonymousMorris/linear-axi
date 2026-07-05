@@ -16,7 +16,7 @@ Agent ergonomic wrapper around the configured Linear MCP server. Prefer this ove
 You do not need linear-axi installed globally - invoke it with `npx -y linear-axi <command>`.
 If linear-axi output shows a follow-up command starting with `linear-axi`, run it as `npx -y linear-axi ...` instead.
 
-linear-axi uses the configured Linear MCP server. The default remote endpoint uses OAuth; if authorization is required, run `npx -y linear-axi auth login`.
+linear-axi uses the configured Linear MCP server. The default remote endpoint uses OAuth; if authorization is required, run `npx -y linear-axi auth login`. Run `npx -y linear-axi auth logout` to clear saved OAuth credentials without changing bearer-token environment variables.
 
 ## When to use
 
