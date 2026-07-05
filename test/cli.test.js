@@ -185,14 +185,21 @@ test("projects list uses list_projects wrapper", async () => {
     runtime({
       callTool: async (name, args) => {
         seen = { name, args };
-        return { structuredContent: { projects: [{ id: "p1", name: "Roadmap", state: "started" }] } };
+        return {
+          structuredContent: {
+            projects: [
+              { id: "p-backlog", name: "Later", state: "Backlog" },
+              { id: "p-progress", name: "Roadmap", state: "In Progress" },
+              { id: "p-planned", name: "Next", state: "Planned" },
+            ],
+          },
+        };
       },
     }),
   );
 
   assert.deepEqual(seen, { name: "list_projects", args: { query: "roadmap", limit: 50 } });
-  assert.match(output, /projects\[1\]\{id,name,state\}:/);
-  assert.match(output, /p1,Roadmap,started/);
+  assert.match(output, /projects\[3\]\{status,name,id\}:\n  In Progress,Roadmap,p-progress\n  Planned,Next,p-planned\n  Backlog,Later,p-backlog/);
   assert.match(output, /help\[1\]:\n  Run `linear-axi projects list --fields id,name,status` to choose fields/);
   assert.doesNotMatch(output, /--full/);
   assert.doesNotMatch(output, /--query "<text>"/);
@@ -336,7 +343,11 @@ test("issues list uses list_issues wrapper with explicit all-projects", async ()
         seen = { name, args };
         return {
           structuredContent: {
-            issues: [{ identifier: "LIN-1", title: "Fix auth", state: { name: "In Progress" }, assignee: { name: "Morris" } }],
+            issues: [
+              { identifier: "LIN-2", title: "Write docs", state: { name: "Todo" }, assignee: { name: "Morris" } },
+              { identifier: "LIN-1", title: "Fix auth", state: { name: "In Progress" }, assignee: { name: "Morris" } },
+              { identifier: "LIN-3", title: "Plan release", state: { name: "Planned" }, assignee: { name: "Morris" } },
+            ],
           },
         };
       },
@@ -344,8 +355,7 @@ test("issues list uses list_issues wrapper with explicit all-projects", async ()
   );
 
   assert.deepEqual(seen, { name: "list_issues", args: { assignee: "me", limit: 50 } });
-  assert.match(output, /issues\[1\]\{id,title,state,assignee\}:/);
-  assert.match(output, /LIN-1,Fix auth,In Progress,Morris/);
+  assert.match(output, /issues\[3\]\{state,title,assignee,id\}:\n  In Progress,Fix auth,Morris,LIN-1\n  Planned,Plan release,Morris,LIN-3\n  Todo,Write docs,Morris,LIN-2/);
 });
 
 test("all-projects bypasses repo default project for issue lists", async () => {
