@@ -438,6 +438,8 @@ test("comments create uses comment-oriented flags", async () => {
   assert.deepEqual(seen, { name: "save_comment", args: { issueId: "LIN-1", body: "Ready" } });
   assert.match(output, /comment:/);
   assert.match(output, /id: c1/);
+  assert.doesNotMatch(output, /help\[/);
+  assert.doesNotMatch(output, /linear-axi comments list/);
 });
 
 test("comments create returns compact preview output", async () => {
@@ -466,8 +468,8 @@ test("comments create returns compact preview output", async () => {
   assert.match(output, /created: "2026-07-04T12:00:00Z"/);
   assert.match(output, /\.\.\. \(truncated, 121 chars total\)/);
   assert.doesNotMatch(output, /metadata/);
-  assert.doesNotMatch(output, /help\[/);
-  assert.doesNotMatch(output, /linear-axi comments list/);
+  assert.match(output, /help\[1\]:\n  Run `linear-axi comments list --issue LIN-1 --full` to show complete comment bodies/);
+  assert.doesNotMatch(output, /Run `linear-axi comments list --issue LIN-1` to verify comments/);
 });
 
 test("comments create treats text-only mutation responses as errors", async () => {

@@ -84,5 +84,10 @@ async function createCommentCommand(args, runtime) {
     `Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)}\` to verify comments`,
   ]);
   const compact = compactCommentMutation(comment);
-  return renderToon({ comment: compact.comment });
+  return renderToon({
+    comment: compact.comment,
+    ...(compact.truncated
+      ? { help: [`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`] }
+      : {}),
+  });
 }
