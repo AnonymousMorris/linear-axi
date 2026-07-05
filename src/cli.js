@@ -1,5 +1,6 @@
-import { realpathSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AxiError as SdkAxiError, exitCodeForError, runAxiCli } from "axi-sdk-js";
 import { usage } from "./args.js";
 import { resolveMcpUrl } from "./config.js";
@@ -23,7 +24,7 @@ import {
 import { statusCommand } from "./commands/statuses.js";
 import { DESCRIPTION } from "./skill.js";
 
-const { version: VERSION } = createRequire(import.meta.url)("../package.json");
+const VERSION = readPackageVersion();
 
 const COMMANDS = {
   ...Object.fromEntries(Object.keys(LIST_TOOL_ALIASES).map((command) => [
@@ -86,7 +87,7 @@ function cliOptions(args, context) {
     description: DESCRIPTION,
     version: VERSION,
     topLevelHelp: topHelp(),
-    home: withRuntimeCleanup(async (_args, runtime) => homeCommand(runtime)),
+    home: withRuntimeCleanup(async (_args, runtime) => stripHomeHeader(renderCommandResult(await homeCommand(runtime)))),
     commands: Object.fromEntries(Object.entries(COMMANDS).map(([name, command]) => [
       name,
       withRuntimeCleanup(async (commandArgs, runtime) => trimFinalNewline(await command(commandArgs, runtime))),
@@ -113,6 +114,13 @@ function withRuntimeCleanup(handler) {
   };
 }
 
+function stripHomeHeader(output) {
+  return trimFinalNewline(output)
+    .split("\n")
+    .filter((line) => !line.startsWith("bin: ") && !line.startsWith("description: "))
+    .join("\n");
+}
+
 function formatError(error) {
   if (error instanceof SdkAxiError) {
     return {
@@ -130,7 +138,6 @@ function formatError(error) {
     output: renderToon({
       error: axiError.message,
       code: axiError.code,
-      type: axiError.type,
       ...(axiError.help.length > 0 ? { help: axiError.help } : {}),
     }),
     exitCode: axiError.exitCode,
@@ -159,4 +166,19 @@ function executablePath() {
   } catch {
     return process.argv[1] ?? "linear-axi";
   }
+}
+
+function readPackageVersion() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [
+    join(here, "..", "package.json"),
+    join(here, "..", "..", "package.json"),
+  ]) {
+    if (!existsSync(candidate)) continue;
+    const parsed = JSON.parse(readFileSync(candidate, "utf8"));
+    if (typeof parsed.version === "string" && parsed.version.length > 0) {
+      return parsed.version;
+    }
+  }
+  throw new Error("Could not determine linear-axi package version");
 }
