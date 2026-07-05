@@ -1,5 +1,4 @@
 import { collapseHome } from "../config.js";
-import { renderToon } from "../format.js";
 import { formatCommandArg } from "../lib/cli-helpers.js";
 import { paginationInfo } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData } from "../lib/mcp-tools.js";
@@ -28,7 +27,7 @@ export async function homeCommand(runtime) {
       "Run `linear-axi issues list --assignee me --all-projects` to list your assigned issues across Linear",
       "Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents",
     ];
-    return renderToon(output);
+    return output;
   }
 
   let validatedProject = repoProject;
@@ -52,7 +51,7 @@ export async function homeCommand(runtime) {
       `Run \`linear-axi projects list --query ${formatCommandArg(repoProject.project)} --fields id,name,status\` to search the current workspace`,
       'Run `linear-axi init --project "<project>" --force` to update .linear-project',
     ];
-    return renderToon(output);
+    return output;
   }
 
   if (error) {
@@ -66,7 +65,7 @@ export async function homeCommand(runtime) {
     "Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents",
   ];
 
-  return renderToon(output);
+  return output;
 }
 
 async function linearWorkspaceName(runtime) {
