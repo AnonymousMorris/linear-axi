@@ -11,7 +11,7 @@ examples:
   linear-axi
   linear-axi init --project "Roadmap"
   linear-axi auth login
-  linear-axi issues list --assignee me --limit 25
+  linear-axi issues list --assignee me --all-projects --limit 25
   linear-axi projects create --name "Roadmap" --team ENG
   linear-axi documents view <id>
   linear-axi issues update --id LIN-123 --state Done
@@ -36,7 +36,7 @@ examples:
 export function groupHelp(name, subcommands) {
   const examples = {
     issues: [
-      "linear-axi issues list --assignee me --limit 25",
+      "linear-axi issues list --assignee me --all-projects --limit 25",
       "linear-axi issues view LIN-123",
       'linear-axi issues create --title "Fix auth" --team ENG',
       "linear-axi issues update --id LIN-123 --state Done",
@@ -48,7 +48,7 @@ export function groupHelp(name, subcommands) {
       'linear-axi issues create --title "Task" --team ENG --project "Roadmap"',
     ],
     documents: [
-      "linear-axi documents list --limit 25",
+      "linear-axi documents list --all-projects --limit 25",
       "linear-axi documents view <id>",
       'linear-axi documents create --title "Spec" --team ENG --content-file spec.md',
       'linear-axi documents update --id <id> --content "Updated"',
@@ -81,6 +81,16 @@ ${(examples[name] ?? [`linear-axi ${name} list`]).map((example) => `  ${example}
 }
 
 export function listAliasHelp(alias) {
+  const projectScopedList = ["issues", "documents"].includes(alias);
+  const projectScopeHelp = ["issues", "documents"].includes(alias)
+    ? `  --all-projects
+`
+    : "";
+  const projectScopeNote = ["issues", "documents"].includes(alias)
+    ? `notes:
+  issues and documents require the repo default project from .linear-project, --project, or --all-projects.
+`
+    : "";
   return `usage: linear-axi ${alias} list [filters] [--full]
 flags:
   --limit <n> default ${DEFAULT_LIMIT}
@@ -94,7 +104,7 @@ flags:
   --delegate <user>
   --member <user>
   --project <project>
-  --cycle <cycle>
+${projectScopeHelp}  --cycle <cycle>
   --label <label>
   --parentId <issue-id>
   --priority <number>
@@ -109,12 +119,10 @@ flags:
   --fields <comma-separated-fields>
   --full
 examples:
-  linear-axi ${alias} list --limit 25
+  linear-axi ${alias} list ${projectScopedList ? "--all-projects " : ""}--limit 25
   linear-axi ${alias} list --fields ${fieldHint(alias)}
   linear-axi ${alias} list --query "auth" --full
-notes:
-  issues and documents use the repo default project from .linear-project unless --project is passed.
-`;
+${projectScopeNote}`;
 }
 
 export function commentListHelp() {
@@ -241,13 +249,14 @@ examples:
 }
 
 export function milestoneCreateHelp() {
-  return `usage: linear-axi milestones create --project <project> --name <name>
+  return `usage: linear-axi milestones create [--project <project>] --name <name>
 flags:
   --name <name>
-  --project <project>
+  --project <project>  overrides the repo default project
   --description <markdown>
   --targetDate <yyyy-mm-dd>
 examples:
+  linear-axi milestones create --name "Beta"
   linear-axi milestones create --project "Roadmap" --name "Beta"
 `;
 }
@@ -371,7 +380,7 @@ examples:
 
 const GROUP_FLAG_HELP = {
   issues: [
-    "flags{list}:\n  --assignee <user>, --state <state>, --team <team>, --project <project>, --query <text>, --label <label>, --limit <n> (default 50), --fields <a,b,c>, --full",
+    "flags{list}:\n  --assignee <user>, --state <state>, --team <team>, --project <project>, --all-projects, --query <text>, --label <label>, --limit <n> (default 50), --fields <a,b,c>, --full",
     "flags{view}:\n  --full (show complete description without truncation)",
     "flags{create}:\n  --title <text> (required), --team <team> (required), --description <markdown> or --description-file <path>, --state <state>, --assignee <user>, --project <project>, --label <label>",
     "flags{update}:\n  --id <id> (required), --title <text>, --description <markdown> or --description-file <path>, --state <state>, --assignee <user>, --project <project>, --label <label>",
@@ -382,7 +391,7 @@ const GROUP_FLAG_HELP = {
     "flags{update}:\n  --id <id> (required), --name <text>, --team <team> or --teamId <id>, --summary <text>, --description <markdown>, --status <status>, --lead <user>",
   ],
   documents: [
-    "flags{list}:\n  --project <project>, --query <text>, --team <team>, --limit <n> (default 50), --fields <a,b,c>, --full",
+    "flags{list}:\n  --project <project>, --all-projects, --query <text>, --team <team>, --limit <n> (default 50), --fields <a,b,c>, --full",
     "flags{view}:\n  --full (show complete content without truncation)",
     "flags{create}:\n  --title <text> (required), --team <team>, --project <project>, --issue <issue>, --content <markdown> or --content-file <path>",
     "flags{update}:\n  --id <id> (required), --title <text>, --team <team>, --project <project>, --issue <issue>, --content <markdown> or --content-file <path>",

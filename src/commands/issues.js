@@ -92,7 +92,10 @@ async function createIssueCommand(args, runtime) {
   ]);
   if (parsed.label) toolArgs.labels = parsed.label;
   if (parsed["description-file"]) toolArgs.description = await readTextFlag(parsed["description-file"], runtime.cwd);
-  await applyRepoProjectDefault(toolArgs, runtime);
+  await applyRepoProjectDefault(toolArgs, runtime, {
+    command: "linear-axi issues create",
+    requireProject: true,
+  });
   if (!toolArgs.title || !toolArgs.team) {
     throw usage("creating an issue requires --title and --team", [
       'Run `linear-axi issues create --title "Title" --team "<team>"`',
