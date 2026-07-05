@@ -47,6 +47,7 @@ export const LIST_CONTINUATION_FLAGS = [
   "includeTeams",
   "fields",
   "full",
+  "all-projects",
 ];
 
 export const STATUS_CONTINUATION_FLAGS = [

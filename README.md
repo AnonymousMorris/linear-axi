@@ -51,7 +51,7 @@ Run this once from a Git repository to bind the repo to its Linear project:
 linear-axi init --project "Roadmap"
 ```
 
-This writes `.linear-project` at the Git root as JSON, for example `{ "project": "Roadmap" }`. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
+This writes `.linear-project` at the Git root as JSON, for example `{ "project": "Roadmap" }`. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Use `--all-projects` on issue and document list commands when you intentionally want a workspace-wide list. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
 
 ## Commands
 
@@ -64,6 +64,7 @@ linear-axi auth login
 linear-axi auth login --manual
 linear-axi auth finish --code <code>
 linear-axi issues list --assignee me --limit 25
+linear-axi issues list --assignee me --all-projects
 linear-axi issues list --fields id,title,state,assignee
 linear-axi issues view LIN-123 --full
 linear-axi issues create --title "Fix auth" --team ENG --project "Roadmap"
@@ -94,13 +95,14 @@ The default `linear-axi` dashboard shows setup hints until the current Git repo 
 ```bash
 > linear-axi
 description: Linear project dashboard
-repo: my-repo
+workspace: Acme
 project: not initialized
+repo: my-repo
 status: No default Linear project is configured for this repository
 help[4]:
   Run `linear-axi projects list` to find Linear projects
   Run `linear-axi init --project "<project>"` to bind this repo
-  Run `linear-axi issues list --assignee me` to list your assigned issues across Linear
+  Run `linear-axi issues list --assignee me --all-projects` to list your assigned issues across Linear
   Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents
 ```
 
@@ -108,7 +110,9 @@ After initialization, the dashboard shows the configured repo project plus a pro
 
 ```bash
 > linear-axi
+workspace: Acme
 project: Roadmap
+repo: my-repo
 issues: 3 assigned to me in project
 ```
 

@@ -57,7 +57,7 @@ async function createDocumentCommand(args, runtime) {
   const parsed = parseFlags(args, { boolean: ["help"], example: 'documents create --title "Spec" --team ENG' });
   if (parsed.help) return documentCreateHelp();
   rejectDocumentIdOnCreate("create", parsed);
-  const toolArgs = await documentToolArgs(parsed, runtime);
+  const toolArgs = await documentToolArgs(parsed, runtime, { applyDefaultProject: true });
   if (!toolArgs.title) {
     throw usage("creating a document requires --title", ['Run `linear-axi documents create --title "Spec" --team "<team>"`']);
   }
@@ -88,9 +88,14 @@ function rejectDocumentIdOnCreate(subcommand, parsed) {
   ], parsed);
 }
 
-async function documentToolArgs(parsed, runtime) {
+async function documentToolArgs(parsed, runtime, options = {}) {
   const toolArgs = collectKnownArgs(parsed, ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"]);
-  if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
+  if (options.applyDefaultProject && !toolArgs.team && !toolArgs.issue && !toolArgs.initiative && !toolArgs.cycle) {
+    await applyRepoProjectDefault(toolArgs, runtime, {
+      command: "linear-axi documents create",
+      requireProject: true,
+    });
+  }
   if (parsed["content-file"]) toolArgs.content = await readTextFlag(parsed["content-file"], runtime.cwd);
   return toolArgs;
 }

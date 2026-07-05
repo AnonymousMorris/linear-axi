@@ -57,7 +57,10 @@ async function createMilestoneCommand(args, runtime) {
   if (parsed.help) return milestoneCreateHelp();
   rejectMilestoneIdOnCreate("create", parsed);
   const toolArgs = collectKnownArgs(parsed, ["id", "name", "project", "description", "targetDate"]);
-  await applyRepoProjectDefault(toolArgs, runtime);
+  await applyRepoProjectDefault(toolArgs, runtime, {
+    command: "linear-axi milestones create",
+    requireProject: true,
+  });
   if (!toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones create --project "<project>" --name "<name>"`']);
   if (!toolArgs.name) throw usage("creating a milestone requires --name", ['Run `linear-axi milestones create --project "<project>" --name "<name>"`']);
   return saveMilestone(toolArgs, runtime);
@@ -83,7 +86,10 @@ function rejectMilestoneIdOnCreate(subcommand, parsed) {
 
 async function milestoneProjectArgs(parsed, runtime) {
   const toolArgs = collectKnownArgs(parsed, ["project"]);
-  await applyRepoProjectDefault(toolArgs, runtime);
+  await applyRepoProjectDefault(toolArgs, runtime, {
+    command: "linear-axi milestones list",
+    requireProject: true,
+  });
   return toolArgs;
 }
 

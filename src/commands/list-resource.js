@@ -35,8 +35,14 @@ export async function listResourceCommand(alias, args, runtime) {
 export async function aliasListCommand(alias, args, runtime) {
   const publicName = pluralName(alias);
   const toolNames = LIST_TOOL_ALIASES[alias];
-  const parsed = parseFlags(args, { boolean: ["help", "full", "includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"], example: `${publicName} list --limit ${DEFAULT_LIMIT}` });
+  const parsed = parseFlags(args, { boolean: ["help", "full", "all-projects", "includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"], example: `${publicName} list --limit ${DEFAULT_LIMIT}` });
   if (parsed.help) return listAliasHelp(publicName);
+  if (parsed["all-projects"] && !["issues", "documents"].includes(alias)) {
+    throw usage("--all-projects is only supported for issues and documents", [
+      "Run `linear-axi issues list --all-projects`",
+      "Run `linear-axi documents list --all-projects`",
+    ]);
+  }
   const toolArgs = collectKnownArgs(parsed, [
     "assignee",
     "createdAt",
@@ -64,7 +70,12 @@ export async function aliasListCommand(alias, args, runtime) {
   ]);
   if (!("limit" in toolArgs)) toolArgs.limit = DEFAULT_LIMIT;
   if (["issues", "documents"].includes(alias)) {
-    await applyRepoProjectDefault(toolArgs, runtime);
+    await applyRepoProjectDefault(toolArgs, runtime, {
+      allProjects: Boolean(parsed["all-projects"]),
+      allProjectsCommand: `linear-axi ${publicName} list --all-projects`,
+      command: `linear-axi ${publicName} list`,
+      requireProject: true,
+    });
   }
 
   const result = await callAvailableTool(runtime, toolNames, toolArgs);
