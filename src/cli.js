@@ -138,6 +138,7 @@ function formatError(error) {
     output: renderToon({
       error: axiError.message,
       code: axiError.code,
+      type: axiError.type,
       ...(axiError.help.length > 0 ? { help: axiError.help } : {}),
     }),
     exitCode: axiError.exitCode,

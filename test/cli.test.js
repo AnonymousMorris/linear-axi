@@ -1908,6 +1908,20 @@ test("main uses SDK unknown-command handling without MCP calls", async () => {
   assert.doesNotMatch(output, /type:/);
 });
 
+test("main preserves Linear command error type field", async () => {
+  const output = await runMain(["issues", "view", "LIN-404"], {
+    client: {
+      close: async () => {},
+      listTools: async () => [{ name: "get_issue" }],
+      callTool: async () => ({ structuredContent: {} }),
+    },
+  });
+
+  assert.match(output, /error: "issue not found: LIN-404"/);
+  assert.match(output, /code: NOT_FOUND/);
+  assert.match(output, /type: The requested Linear resource was not found\./);
+});
+
 test("unsupported subcommands use generic unknown-subcommand handling without MCP calls", async () => {
   let called = false;
   const client = runtime({
