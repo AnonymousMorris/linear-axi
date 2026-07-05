@@ -4,7 +4,7 @@ import { parseFlags, usage } from "../args.js";
 import { collapseHome } from "../config.js";
 import { renderToon } from "../format.js";
 import { formatCommandArg } from "../lib/cli-helpers.js";
-import { findGitRoot, readProjectFile } from "../lib/repo-project.js";
+import { findGitRoot, projectFileValue, readProjectFile, validateRepoProject } from "../lib/repo-project.js";
 import { initHelp } from "./help.js";
 
 export async function initCommand(args, runtime) {
@@ -31,10 +31,19 @@ export async function initCommand(args, runtime) {
     existing = null;
   }
   if (existing?.project === project) {
+    const validated = await validateRepoProject(parsed.force ? { project } : existing, runtime);
+    if (validated.workspace && existing.workspace !== validated.workspace) {
+      await writeProjectFile(path, validated);
+      return renderToon({
+        project: "initialized",
+        file: collapseHome(path),
+        value: projectFileValue(validated),
+      });
+    }
     return renderToon({
       project: "already initialized",
       file: collapseHome(path),
-      value: { project },
+      value: projectFileValue(existing),
     });
   }
   if (existing && !parsed.force) {
@@ -44,10 +53,15 @@ export async function initCommand(args, runtime) {
     ]);
   }
 
-  await writeFile(path, `${JSON.stringify({ project }, null, 2)}\n`, "utf8");
+  const validated = await validateRepoProject({ project }, runtime);
+  await writeProjectFile(path, validated);
   return renderToon({
     project: "initialized",
     file: collapseHome(path),
-    value: { project },
+    value: projectFileValue(validated),
   });
+}
+
+async function writeProjectFile(path, repoProject) {
+  await writeFile(path, `${JSON.stringify(projectFileValue(repoProject), null, 2)}\n`, "utf8");
 }

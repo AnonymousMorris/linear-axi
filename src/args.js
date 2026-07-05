@@ -79,6 +79,12 @@ const ERROR_CODES = {
   not_found: "NOT_FOUND",
 };
 
+const ERROR_TYPE_MESSAGES = {
+  VALIDATION_ERROR: "The command input or saved local configuration is invalid.",
+  NOT_FOUND: "The requested Linear resource was not found.",
+  OPERATION_ERROR: "The Linear operation failed.",
+};
+
 export class AxiError extends Error {
   constructor(kind, message, help = []) {
     super(message);
@@ -86,9 +92,14 @@ export class AxiError extends Error {
     this.help = help;
     this.exitCode = kind === "usage" ? 2 : 1;
     this.code = ERROR_CODES[kind] ?? "OPERATION_ERROR";
+    this.type = errorTypeMessage(this.code);
   }
 }
 
 export function usage(message, help = []) {
   return new AxiError("usage", message, help);
+}
+
+export function errorTypeMessage(code) {
+  return ERROR_TYPE_MESSAGES[code] ?? ERROR_TYPE_MESSAGES.OPERATION_ERROR;
 }

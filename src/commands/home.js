@@ -1,8 +1,9 @@
 import { collapseHome } from "../config.js";
 import { renderToon } from "../format.js";
+import { formatCommandArg } from "../lib/cli-helpers.js";
 import { paginationInfo } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData } from "../lib/mcp-tools.js";
-import { readRepoProject, withRepoProject } from "../lib/repo-project.js";
+import { extractWorkspaceName, readRepoProject, validateRepoProject, withRepoProject } from "../lib/repo-project.js";
 import { mcpErrorMessage, workspaceName } from "./shared.js";
 
 export async function homeCommand(runtime) {
@@ -30,8 +31,10 @@ export async function homeCommand(runtime) {
     return renderToon(output);
   }
 
+  let validatedProject = repoProject;
   try {
-    const result = await runtime.client.callTool("list_issues", withRepoProject({ assignee: "me", limit: 10, orderBy: "updatedAt" }, repoProject));
+    validatedProject = await validateRepoProject(repoProject, runtime);
+    const result = await runtime.client.callTool("list_issues", withRepoProject({ assignee: "me", limit: 10, orderBy: "updatedAt" }, validatedProject));
     const data = extractData(result);
     issueCount = asArray(data).length;
     issueMore = Boolean(paginationInfo(data, issueCount).cursor);
@@ -41,6 +44,16 @@ export async function homeCommand(runtime) {
 
   output.project = repoProject.project;
   output.repo = await workspaceName(runtime.cwd);
+
+  if (isInvalidRepoProject(error)) {
+    output.status = "Default Linear project is invalid";
+    output.error = error;
+    output.help = [
+      `Run \`linear-axi projects list --query ${formatCommandArg(repoProject.project)} --fields id,name,status\` to search the current workspace`,
+      'Run `linear-axi init --project "<project>" --force` to update .linear-project',
+    ];
+    return renderToon(output);
+  }
 
   if (error) {
     output.status = "Linear MCP connection unavailable";
@@ -67,35 +80,6 @@ async function linearWorkspaceName(runtime) {
   }
 }
 
-function extractWorkspaceName(data, options = {}) {
-  const { allowBareName = true } = options;
-  if (!data || typeof data !== "object") return null;
-  for (const key of ["workspace", "organization"]) {
-    const nested = extractWorkspaceName(data[key]);
-    if (nested) return nested;
-  }
-  if (typeof data.url === "string") {
-    const workspace = workspaceFromLinearUrl(data.url);
-    if (workspace) return workspace;
-  }
-  if (allowBareName && typeof data.name === "string" && data.name.trim()) return data.name.trim();
-  for (const key of ["projects", "teams", "nodes", "items", "data"]) {
-    if (!Array.isArray(data[key])) continue;
-    for (const item of data[key]) {
-      const nested = extractWorkspaceName(item, { allowBareName: false });
-      if (nested) return nested;
-    }
-  }
-  return null;
-}
-
-function workspaceFromLinearUrl(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname !== "linear.app") return null;
-    const workspace = parsed.pathname.split("/").filter(Boolean)[0];
-    return workspace || null;
-  } catch {
-    return null;
-  }
+function isInvalidRepoProject(error) {
+  return typeof error === "string" && error.startsWith("The saved default Linear project does not exist");
 }

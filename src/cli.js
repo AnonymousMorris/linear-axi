@@ -30,6 +30,7 @@ export async function main(args, context) {
     context.stdout.write(renderToon({
       error: axiError.message,
       code: axiError.code,
+      type: axiError.type,
       ...(axiError.help.length > 0 ? { help: axiError.help } : {}),
     }));
     process.exitCode = axiError.exitCode;
