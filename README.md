@@ -51,7 +51,7 @@ Run this once from a Git repository to bind the repo to its Linear project:
 linear-axi init --project "Roadmap"
 ```
 
-This writes `.linear-project` at the Git root as JSON, for example `{ "project": "Roadmap" }`. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Use `--all-projects` on issue and document list commands when you intentionally want a workspace-wide list. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
+This validates the project in the authenticated Linear workspace and writes `.linear-project` at the Git root as JSON, for example `{ "workspace": "Acme", "project": "Roadmap" }`. The workspace is discovered from Linear; you do not pass it as an argument. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Use `--all-projects` on issue and document list commands when you intentionally want a workspace-wide list. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
 
 ## Commands
 
@@ -147,6 +147,7 @@ issue:
 > linear-axi issues view LIN-404
 error: issue not found: LIN-404
 code: NOT_FOUND
+type: The requested Linear resource was not found.
 help[2]:
   Run `linear-axi issues list --query LIN-404` to search for the issue
   Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue
@@ -158,6 +159,7 @@ Unknown commands and subcommands return structured usage errors with recovery hi
 > linear-axi releases list
 error: unknown command: releases
 code: VALIDATION_ERROR
+type: The command input or saved local configuration is invalid.
 help[5]:
   Run `linear-axi`
   Run `linear-axi init --project "<project>"`

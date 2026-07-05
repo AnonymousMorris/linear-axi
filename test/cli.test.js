@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { run } from "../src/cli.js";
+import { main, run } from "../src/cli.js";
 
 test("top help exposes Linear resource commands", async () => {
   const output = await run(["--help"], runtime({}));
@@ -131,6 +131,36 @@ test("home project uses .linear-project when configured", async () => {
   assert.match(output, /issues: 0 assigned to me in project/);
   assert.doesNotMatch(output, /issues\[0\]/);
   assert.match(output, /help\[1\]:/);
+});
+
+test("home warns when configured project is not in the current workspace", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ workspace: "Acme", project: "Linear AXI" }), "utf8");
+  let issueListCalled = false;
+
+  const output = await run(
+    [],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }, { name: "list_issues" }],
+      callTool: async (name, args) => {
+        if (name === "list_projects" && !args.query) {
+          return { structuredContent: { projects: [{ name: "Roadmap", url: "https://linear.app/acme/project/roadmap" }] } };
+        }
+        if (name === "list_projects") return { structuredContent: { projects: [] } };
+        issueListCalled = true;
+        return { structuredContent: { issues: [] } };
+      },
+    }),
+  );
+
+  assert.equal(issueListCalled, false);
+  assert.match(output, /workspace: acme\nproject: Linear AXI\n/);
+  assert.match(output, /status: Default Linear project is invalid/);
+  assert.match(output, /error: "The saved default Linear project does not exist in the authenticated workspace: Linear AXI"/);
+  assert.match(output, /Run `linear-axi projects list --query "Linear AXI" --fields id,name,status` to search the current workspace/);
+  assert.match(output, /Run `linear-axi init --project "<project>" --force` to update \.linear-project/);
 });
 
 test("home summarizes project-assigned issues instead of listing rows", async () => {
@@ -457,6 +487,56 @@ test("init saves repo project and issues list uses it by default", async () => {
   );
 
   assert.deepEqual(seen, { name: "list_issues", args: { project: "Roadmap", limit: 50 } });
+});
+
+test("init validates the project and saves the authenticated workspace", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+
+  const initOutput = await run(
+    ["init", "--project", "Roadmap"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "list_projects");
+        assert.deepEqual(args, { query: "Roadmap", limit: 10 });
+        return {
+          structuredContent: {
+            projects: [{ name: "Roadmap", workspace: { name: "Acme" } }],
+          },
+        };
+      },
+    }),
+  );
+
+  assert.match(initOutput, /workspace: Acme/);
+  assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: "Roadmap" });
+});
+
+test("repo project default validates before project-scoped list commands", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "Linear AXI" }), "utf8");
+  let issueListCalled = false;
+
+  await assert.rejects(
+    () => run(
+      ["issues", "list"],
+      runtime({
+        cwd: repo,
+        listTools: async () => [{ name: "list_projects" }, { name: "list_issues" }],
+        callTool: async (name) => {
+          if (name === "list_projects") return { structuredContent: { projects: [] } };
+          issueListCalled = true;
+          return { structuredContent: { issues: [] } };
+        },
+      }),
+    ),
+    /The saved default Linear project does not exist in the authenticated workspace: Linear AXI/,
+  );
+
+  assert.equal(issueListCalled, false);
 });
 
 test("repo project default applies to issue creates but not updates", async () => {
@@ -1636,6 +1716,35 @@ test("unsupported top-level resources use generic unknown-command handling witho
   );
 
   assert.equal(called, false);
+});
+
+test("main renders human-readable error type descriptions", async () => {
+  const writes = [];
+  const originalExitCode = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    await main(
+      ["releases", "list"],
+      {
+        cwd: process.cwd(),
+        env: {},
+        stdout: { write: (text) => writes.push(text) },
+        client: {
+          close: async () => {},
+          callTool: async () => {
+            throw new Error("should not call MCP for unknown commands");
+          },
+        },
+      },
+    );
+  } finally {
+    process.exitCode = originalExitCode;
+  }
+
+  const output = writes.join("");
+  assert.match(output, /error: "unknown command: releases"/);
+  assert.match(output, /code: VALIDATION_ERROR/);
+  assert.match(output, /type: The command input or saved local configuration is invalid\./);
 });
 
 test("unsupported subcommands use generic unknown-subcommand handling without MCP calls", async () => {
