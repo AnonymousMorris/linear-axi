@@ -89,12 +89,26 @@ linear-axi statuses list --team ENG
 
 ## Output behavior
 
-The default `linear-axi` dashboard: it shows the configured repo project, or the Git/workspace name when no project is configured, plus a count of issues assigned to you instead of listing issue rows.
+The default `linear-axi` dashboard shows setup hints until the current Git repo is bound to a Linear project. Use `projects list` to find the project name, then save it with `init`.
+
+```bash
+> linear-axi
+description: Linear project dashboard
+repo: my-repo
+project: not initialized
+status: No default Linear project is configured for this repository
+help[3]:
+  Run `linear-axi projects list` to find Linear projects
+  Run `linear-axi init --project "<project>"` to bind this repo
+  Run `linear-axi issues list --assignee me` to list your assigned issues across Linear
+```
+
+After initialization, the dashboard shows the configured repo project plus a project-scoped count of issues assigned to you instead of listing issue rows.
 
 ```bash
 > linear-axi
 project: Roadmap
-issues: 3 assigned to me
+issues: 3 assigned to me in project
 ```
 
 List commands use a compact schema by default. Empty lists render as `items: []`, counts render as `0 returned` or `1 returned (more available)`, and general resource lists include field-selection hints. Comments lists suggest creating a comment and add a `--full` hint only when body previews are truncated; statuses lists suggest `--full`. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response. Hints are reserved for discovery, pagination, truncation, required follow-up steps such as OAuth, and error recovery.

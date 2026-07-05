@@ -10,6 +10,24 @@ export async function homeCommand(runtime) {
   let issueMore = false;
   let error;
   const repoProject = await readRepoProject(runtime.cwd);
+
+  const output = {
+    bin: collapseHome(runtime.binPath),
+    description: "Linear project dashboard",
+  };
+
+  if (!repoProject) {
+    output.repo = await workspaceName(runtime.cwd);
+    output.project = "not initialized";
+    output.status = "No default Linear project is configured for this repository";
+    output.help = [
+      "Run `linear-axi projects list` to find Linear projects",
+      'Run `linear-axi init --project "<project>"` to bind this repo',
+      "Run `linear-axi issues list --assignee me` to list your assigned issues across Linear",
+    ];
+    return renderToon(output);
+  }
+
   try {
     const result = await runtime.client.callTool("list_issues", withRepoProject({ assignee: "me", limit: 10, orderBy: "updatedAt" }, repoProject));
     const data = extractData(result);
@@ -19,17 +37,13 @@ export async function homeCommand(runtime) {
     error = mcpErrorMessage(caught);
   }
 
-  const output = {
-    bin: collapseHome(runtime.binPath),
-    description: "AXI wrapper around the configured Linear MCP server",
-    project: repoProject?.project ?? await workspaceName(runtime.cwd),
-  };
+  output.project = repoProject.project;
 
   if (error) {
     output.status = "Linear MCP connection unavailable";
     output.error = error;
   } else {
-    output.issues = `${issueCount}${issueMore ? "+" : ""} assigned to me`;
+    output.issues = `${issueCount}${issueMore ? "+" : ""} assigned to me in project`;
   }
 
   output.help = [

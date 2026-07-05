@@ -16,10 +16,40 @@ test("top help exposes Linear resource commands", async () => {
   assert.doesNotMatch(output, /call <tool>/);
 });
 
-test("home auth errors suggest login before list commands", async () => {
+test("home uninitialized repo suggests project setup without global issue count", async () => {
   const parent = await mkdtemp(join(tmpdir(), "linear-axi-home-"));
   const repo = join(parent, "linear-axi");
   await mkdir(join(repo, ".git"), { recursive: true });
+  let called = false;
+
+  const output = await run(
+    [],
+    runtime({
+      cwd: repo,
+      callTool: async () => {
+        called = true;
+        return { structuredContent: { issues: [{ identifier: "LIN-1", title: "Global issue" }] } };
+      },
+    }),
+  );
+
+  assert.equal(called, false);
+  assert.match(output, /description: Linear project dashboard/);
+  assert.match(output, /repo: linear-axi/);
+  assert.match(output, /project: not initialized/);
+  assert.match(output, /status: No default Linear project is configured for this repository/);
+  assert.match(output, /Run `linear-axi projects list` to find Linear projects/);
+  assert.match(output, /Run `linear-axi init --project "<project>"` to bind this repo/);
+  assert.match(output, /Run `linear-axi issues list --assignee me` to list your assigned issues across Linear/);
+  assert.doesNotMatch(output, /assigned to me$/m);
+  assert.doesNotMatch(output, /Global issue/);
+});
+
+test("home auth errors suggest login before list commands for initialized repos", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "linear-axi-home-"));
+  const repo = join(parent, "linear-axi");
+  await mkdir(join(repo, ".git"), { recursive: true });
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "Roadmap" }), "utf8");
 
   const output = await run(
     [],
@@ -33,7 +63,7 @@ test("home auth errors suggest login before list commands", async () => {
     }),
   );
 
-  assert.match(output, /project: linear-axi/);
+  assert.match(output, /project: Roadmap/);
   assert.match(output, /error: Linear MCP OAuth authorization required/);
   assert.match(output, /help\[1\]:\n  Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents/);
   assert.doesNotMatch(output, /linear-axi init --project/);
@@ -54,15 +84,20 @@ test("home project uses .linear-project when configured", async () => {
   );
 
   assert.match(output, /project: Roadmap/);
-  assert.match(output, /issues: 0 assigned to me/);
+  assert.match(output, /issues: 0 assigned to me in project/);
   assert.doesNotMatch(output, /issues\[0\]/);
   assert.match(output, /help\[1\]:/);
 });
 
-test("home summarizes assigned issues instead of listing rows", async () => {
+test("home summarizes project-assigned issues instead of listing rows", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "Roadmap" }), "utf8");
+
   const output = await run(
     [],
     runtime({
+      cwd: repo,
       callTool: async () => ({
         structuredContent: {
           issues: [
@@ -75,7 +110,7 @@ test("home summarizes assigned issues instead of listing rows", async () => {
     }),
   );
 
-  assert.match(output, /issues: 2\+ assigned to me/);
+  assert.match(output, /issues: 2\+ assigned to me in project/);
   assert.doesNotMatch(output, /issues\[2\]/);
   assert.doesNotMatch(output, /Fix auth/);
 });

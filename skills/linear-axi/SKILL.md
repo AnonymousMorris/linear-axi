@@ -24,8 +24,8 @@ Use linear-axi whenever a task touches Linear: listing, viewing, creating, or up
 
 ## Workflow
 
-1. Run `npx -y linear-axi` with no arguments for a dashboard of the current repo - project, assigned issue count, connection status, and suggested next commands.
-2. Bind a repository to a Linear project with `npx -y linear-axi init --project "<project>"`; project-scoped commands use `.linear-project` automatically after that.
+1. Run `npx -y linear-axi` with no arguments for a dashboard of the current repo. Uninitialized repos show setup hints instead of workspace-wide issue counts.
+2. List Linear projects with `npx -y linear-axi projects list`, then bind a repository with `npx -y linear-axi init --project "<project>"`; project-scoped commands use `.linear-project` automatically after that.
 3. Drill in command-first: `issues list`, `issues view <id>`, `projects list`, `documents view <id>`, `comments list --issue <id>`, and so on.
 4. Add `--fields` for columns, `--cursor` for pagination, and `--full` only when complete content is needed.
 5. Every response ends with contextual next-step hints under `help:` - follow them.
