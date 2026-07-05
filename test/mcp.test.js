@@ -34,6 +34,18 @@ test("OAuth provider persists state for Linear CSRF validation", async () => {
   assert.equal(resetStore.state, undefined);
 });
 
+test("OAuth provider deletes the local credential store", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "linear-axi-oauth-"));
+  const storePath = join(dir, "oauth.json");
+  const provider = new LinearOAuthProvider({ storePath });
+
+  await provider.saveTokens({ access_token: "initial" });
+
+  assert.equal(await provider.deleteStore(), true);
+  await assert.rejects(() => stat(storePath), /ENOENT/);
+  assert.equal(await provider.deleteStore(), false);
+});
+
 test("OAuth provider tightens permissions on existing token store", async () => {
   const dir = await mkdtemp(join(tmpdir(), "linear-axi-oauth-"));
   const storePath = join(dir, "oauth.json");

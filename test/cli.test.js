@@ -986,6 +986,34 @@ test("auth login validates localhost callback state before finishing", async () 
   assert.match(output, /auth: Linear MCP OAuth authorized/);
 });
 
+test("auth logout clears local OAuth credentials", async () => {
+  let called = false;
+  const output = await run(
+    ["auth", "logout"],
+    runtime({
+      logoutAuth: async () => {
+        called = true;
+        return { removed: true, tokenConfigured: false };
+      },
+    }),
+  );
+
+  assert.equal(called, true);
+  assert.match(output, /auth: Linear MCP OAuth credentials cleared/);
+});
+
+test("auth logout is an idempotent no-op when credentials are absent", async () => {
+  const output = await run(
+    ["auth", "logout"],
+    runtime({
+      logoutAuth: async () => ({ removed: false, tokenConfigured: true }),
+    }),
+  );
+
+  assert.match(output, /auth: Linear MCP OAuth credentials already absent/);
+  assert.match(output, /note: LINEAR_AXI_MCP_TOKEN or LINEAR_MCP_TOKEN remains configured/);
+});
+
 test("issues view full returns only matching issue detail", async () => {
   const calls = [];
   const output = await run(

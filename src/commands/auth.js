@@ -2,21 +2,24 @@ import { createServer } from "node:http";
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
 import { parseFiniteNumber } from "../lib/cli-helpers.js";
-import { authFinishHelp, authLoginHelp, groupHelp } from "./help.js";
+import { authFinishHelp, authLoginHelp, authLogoutHelp, groupHelp } from "./help.js";
 
 export async function authCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("auth", ["login", "finish"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("auth", ["login", "finish", "logout"]);
 
   switch (subcommand) {
     case "login":
       return loginCommand(rest, runtime);
     case "finish":
       return finishCommand(rest, runtime);
+    case "logout":
+      return logoutCommand(rest, runtime);
     default:
       throw usage(`unknown auth command: ${subcommand ?? ""}`.trim(), [
         "Run `linear-axi auth login`",
         "Run `linear-axi auth finish --code <code>`",
+        "Run `linear-axi auth logout`",
       ]);
   }
 }
@@ -49,6 +52,19 @@ async function finishCommand(args, runtime) {
   if (!parsed.code) throw usage("--code is required", ["Run `linear-axi auth finish --code <code>`"]);
   await runtime.client.finishAuth(parsed.code);
   return renderToon({ auth: "Linear MCP OAuth authorized" });
+}
+
+async function logoutCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], example: "auth logout" });
+  if (parsed.help) return authLogoutHelp();
+  const result = await runtime.client.logoutAuth();
+  const auth = result.removed
+    ? "Linear MCP OAuth credentials cleared"
+    : "Linear MCP OAuth credentials already absent";
+  return renderToon({
+    auth,
+    ...(result.tokenConfigured ? { note: "LINEAR_AXI_MCP_TOKEN or LINEAR_MCP_TOKEN remains configured" } : {}),
+  });
 }
 
 async function completeLoginWithCallback(authorizationUrl, runtime, parsed) {
