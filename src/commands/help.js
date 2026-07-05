@@ -48,7 +48,7 @@ export function groupHelp(name, subcommands) {
       'linear-axi issues create --title "Task" --team ENG --project "Roadmap"',
     ],
     documents: [
-      "linear-axi documents list --limit 25",
+      "linear-axi documents list --all-projects --limit 25",
       "linear-axi documents view <id>",
       'linear-axi documents create --title "Spec" --team ENG --content-file spec.md',
       'linear-axi documents update --id <id> --content "Updated"',
@@ -81,6 +81,7 @@ ${(examples[name] ?? [`linear-axi ${name} list`]).map((example) => `  ${example}
 }
 
 export function listAliasHelp(alias) {
+  const projectScopedList = ["issues", "documents"].includes(alias);
   const projectScopeHelp = ["issues", "documents"].includes(alias)
     ? `  --all-projects
 `
@@ -118,7 +119,7 @@ ${projectScopeHelp}  --cycle <cycle>
   --fields <comma-separated-fields>
   --full
 examples:
-  linear-axi ${alias} list --limit 25
+  linear-axi ${alias} list ${projectScopedList ? "--all-projects " : ""}--limit 25
   linear-axi ${alias} list --fields ${fieldHint(alias)}
   linear-axi ${alias} list --query "auth" --full
 ${projectScopeNote}`;
@@ -248,13 +249,14 @@ examples:
 }
 
 export function milestoneCreateHelp() {
-  return `usage: linear-axi milestones create --project <project> --name <name>
+  return `usage: linear-axi milestones create [--project <project>] --name <name>
 flags:
   --name <name>
-  --project <project>
+  --project <project>  overrides the repo default project
   --description <markdown>
   --targetDate <yyyy-mm-dd>
 examples:
+  linear-axi milestones create --name "Beta"
   linear-axi milestones create --project "Roadmap" --name "Beta"
 `;
 }
