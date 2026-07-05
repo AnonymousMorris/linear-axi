@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
@@ -10,6 +10,7 @@ export class LinearMcpClient {
     this.url = url;
     this.token = token;
     this.fetchImpl = fetchImpl;
+    this.authStorePath = authStorePath;
     this.authProvider = token ? null : new LinearOAuthProvider({ storePath: authStorePath });
     this.client = null;
     this.transport = null;
@@ -56,6 +57,14 @@ export class LinearMcpClient {
       fetch: this.fetchImpl,
     });
     await this.transport.finishAuth(code);
+  }
+
+  async logoutAuth() {
+    const provider = this.authProvider ?? new LinearOAuthProvider({ storePath: this.authStorePath });
+    return {
+      removed: await provider.deleteStore(),
+      tokenConfigured: Boolean(this.token),
+    };
   }
 
   async close() {
@@ -136,6 +145,16 @@ export class LinearOAuthProvider {
       delete store.state;
     }
     await this.writeStore(store);
+  }
+
+  async deleteStore() {
+    try {
+      await rm(this.storePath);
+      return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
   }
 
   async readStore() {

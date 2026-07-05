@@ -61,6 +61,7 @@ export function groupHelp(name, subcommands) {
       "linear-axi auth login",
       "linear-axi auth login --manual",
       "linear-axi auth finish --code <code>",
+      "linear-axi auth logout",
     ],
     milestones: [
       'linear-axi milestones list --project "Roadmap"',
@@ -366,6 +367,13 @@ export function authFinishHelp() {
   return `usage: linear-axi auth finish --code <code>
 examples:
   linear-axi auth finish --code <code>
+`;
+}
+
+export function authLogoutHelp() {
+  return `usage: linear-axi auth logout
+examples:
+  linear-axi auth logout
 `;
 }
 
