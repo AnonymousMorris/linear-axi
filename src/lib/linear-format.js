@@ -2,6 +2,7 @@ import { asArray } from "./mcp-tools.js";
 
 export function compactRows(alias, data) {
   if (alias === "issues") return compactIssues(data);
+  if (alias === "projects") return compactProjects(data);
   return asArray(data).map((item) => ({
     id: item.id ?? item.identifier ?? item.key ?? item.slug ?? item.name ?? "",
     name: item.name ?? item.title ?? item.displayName ?? item.email ?? "",
@@ -77,12 +78,20 @@ export function compactCommentMutation(comment) {
 }
 
 export function compactIssues(data) {
-  return asArray(data).map((issue) => ({
-    id: issue.identifier ?? issue.id ?? "",
+  return groupByStatusPriority(asArray(data).map((issue) => ({
+    state: issue.state?.name ?? issue.status?.name ?? issue.state ?? issue.status ?? "",
     title: issue.title ?? "",
-    state: issue.state?.name ?? issue.state ?? "",
     assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
-  }));
+    id: issue.identifier ?? issue.id ?? "",
+  })));
+}
+
+function compactProjects(data) {
+  return groupByStatusPriority(asArray(data).map((project) => ({
+    status: project.status?.name ?? project.state?.name ?? project.status ?? project.state ?? "",
+    name: project.name ?? project.title ?? "",
+    id: project.id ?? project.identifier ?? "",
+  })));
 }
 
 export function compactIssueDetail(issue) {
@@ -166,6 +175,31 @@ function fieldValue(item, field) {
     return value.name ?? value.displayName ?? value.identifier ?? value.id ?? JSON.stringify(value);
   }
   return value;
+}
+
+function groupByStatusPriority(items) {
+  return items.map((item, index) => ({ item, index })).sort((left, right) => {
+    const leftRank = statusRank(left.item.status ?? left.item.state);
+    const rightRank = statusRank(right.item.status ?? right.item.state);
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    const leftStatus = statusLabel(left.item.status ?? left.item.state);
+    const rightStatus = statusLabel(right.item.status ?? right.item.state);
+    const statusCompare = leftStatus.localeCompare(rightStatus);
+    if (statusCompare !== 0) return statusCompare;
+    return left.index - right.index;
+  }).map(({ item }) => item);
+}
+
+function statusRank(value) {
+  const normalized = statusLabel(value);
+  if (normalized === "in progress" || normalized === "started") return 0;
+  if (normalized === "planned" || normalized === "todo" || normalized === "to do") return 1;
+  if (normalized === "backlog") return 2;
+  return 3;
+}
+
+function statusLabel(value) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
 function formattedPreview(value, limit) {

@@ -117,17 +117,17 @@ repo: my-repo
 issues: 3 assigned to me in project
 ```
 
-List commands use a compact schema by default. Empty lists render as `items: []`, counts render as `0 returned` or `1 returned (more available)`, and general resource lists include field-selection hints. Comments lists suggest creating a comment and add a `--full` hint only when body previews are truncated; statuses lists suggest `--full`. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response. Hints are reserved for discovery, pagination, truncation, required follow-up steps such as OAuth, and error recovery.
+List commands use a compact schema by default. Empty lists render as `items: []`, counts render as `0 returned` or `1 returned (more available)`, and general resource lists include field-selection hints. Project and issue lists put status first, group matching statuses together, prioritize In Progress/Started before Planned/Todo and Backlog, and keep ids last. Comments lists suggest creating a comment and add a `--full` hint only when body previews are truncated; statuses lists suggest `--full`. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response. Hints are reserved for discovery, pagination, truncation, required follow-up steps such as OAuth, and error recovery.
 
 ```bash
-> linear-axi projects list --fields id,name,state --query roadmap --limit 25
+> linear-axi projects list --query roadmap --limit 25
 count: 1 returned (more available)
 cursor: next-page
-projects[1]{id,name,state}:
-  p1,Roadmap,started
+projects[1]{status,name,id}:
+  In Progress,Roadmap,p1
 help[2]:
   Run `linear-axi projects list --fields id,name,status` to choose fields
-  Run `linear-axi projects list --limit 25 --query roadmap --fields 'id,name,state' --cursor next-page` to continue
+  Run `linear-axi projects list --limit 25 --query roadmap --cursor next-page` to continue
 ```
 
 Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Missing detail targets and failed pre-mutation existence checks return structured `NOT_FOUND` errors with search or create hints. Issue, project, document, and comment mutations return compact success objects with the id, title/name, URL, and no success hints except the conditional `comments list --full` escape hatch when a created comment body preview is truncated. Use `create` for new objects and `update` for edits. Other operational failures include an `OPERATION_ERROR` code. Updates verify the target exists before mutating, and comment creates verify the issue exists before adding the comment. Issue and project creates check for existing same-name items and return conflict hints when a likely duplicate already exists. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
