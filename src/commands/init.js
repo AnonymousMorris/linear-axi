@@ -35,7 +35,6 @@ export async function initCommand(args, runtime) {
       project: "already initialized",
       file: collapseHome(path),
       value: { project },
-      help: ["Run `linear-axi issues list` to list issues for this project"],
     });
   }
   if (existing && !parsed.force) {
@@ -50,9 +49,5 @@ export async function initCommand(args, runtime) {
     project: "initialized",
     file: collapseHome(path),
     value: { project },
-    help: [
-      "Run `linear-axi issues list` to list issues for this project",
-      'Run `linear-axi issues create --title "Task" --team "<team>"` to create an issue in this project',
-    ],
   });
 }

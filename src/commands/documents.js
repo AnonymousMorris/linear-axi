@@ -100,8 +100,5 @@ function renderDocumentMutation(result) {
     'Run `linear-axi documents create --title "Spec" --team "<team>" --content-file spec.md`',
     "Run `linear-axi documents view <id>` to read a document",
   ]);
-  return renderToon({
-    document: compactDocumentMutation(document),
-    help: [`Run \`linear-axi documents view ${document.id ?? "<id>"}\` to verify details`],
-  });
+  return renderToon({ document: compactDocumentMutation(document) });
 }

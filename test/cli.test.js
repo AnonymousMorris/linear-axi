@@ -240,6 +240,7 @@ test("init saves repo project and issues list uses it by default", async () => {
   const initOutput = await run(["init", "--project", "Roadmap"], runtime({ cwd: repo }));
   assert.match(initOutput, /project: initialized/);
   assert.match(initOutput, /file: .+\.linear-project/);
+  assert.doesNotMatch(initOutput, /help\[/);
   assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { project: "Roadmap" });
 
   let seen;
@@ -263,7 +264,7 @@ test("repo project default applies to issue creates but not updates", async () =
   await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
 
   let seen;
-  await run(
+  const createOutput = await run(
     ["issues", "create", "--title", "Fix auth", "--team", "ENG"],
     runtime({
       cwd: repo,
@@ -276,8 +277,9 @@ test("repo project default applies to issue creates but not updates", async () =
   );
 
   assert.deepEqual(seen, { name: "save_issue", args: { title: "Fix auth", team: "ENG", project: "Roadmap" } });
+  assert.doesNotMatch(createOutput, /help\[/);
 
-  await run(
+  const updateOutput = await run(
     ["issues", "update", "--id", "LIN-1", "--state", "Done"],
     runtime({
       cwd: repo,
@@ -291,6 +293,7 @@ test("repo project default applies to issue creates but not updates", async () =
   );
 
   assert.deepEqual(seen, { name: "save_issue", args: { id: "LIN-1", state: "Done" } });
+  assert.doesNotMatch(updateOutput, /help\[/);
 });
 
 test("repo project default applies to document creates but not updates", async () => {
@@ -405,6 +408,7 @@ test("init is idempotent and protects existing project values", async () => {
 
   const same = await run(["init", "--project", "Roadmap"], runtime({ cwd: repo }));
   assert.match(same, /project: already initialized/);
+  assert.doesNotMatch(same, /help\[/);
 
   await assert.rejects(
     () => run(["init", "--project", "Other"], runtime({ cwd: repo })),
@@ -413,6 +417,7 @@ test("init is idempotent and protects existing project values", async () => {
 
   const replaced = await run(["init", "--project", "Other", "--force"], runtime({ cwd: repo }));
   assert.match(replaced, /project: initialized/);
+  assert.doesNotMatch(replaced, /help\[/);
   assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { project: "Other" });
 });
 
@@ -461,8 +466,8 @@ test("comments create returns compact preview output", async () => {
   assert.match(output, /created: "2026-07-04T12:00:00Z"/);
   assert.match(output, /\.\.\. \(truncated, 121 chars total\)/);
   assert.doesNotMatch(output, /metadata/);
-  assert.match(output, /Run `linear-axi comments list --issue LIN-1` to verify comments/);
-  assert.match(output, /Run `linear-axi comments list --issue LIN-1 --full` to show complete comment bodies/);
+  assert.doesNotMatch(output, /help\[/);
+  assert.doesNotMatch(output, /linear-axi comments list/);
 });
 
 test("comments create treats text-only mutation responses as errors", async () => {
@@ -869,7 +874,7 @@ test("documents create and update use create or update document tools", async ()
 
   assert.deepEqual(seen, { name: "create_document", args: { title: "Spec" } });
 
-  await run(
+  const updateOutput = await run(
     ["documents", "update", "--id", "doc1", "--content", "Updated"],
     runtime({
       listTools: async () => [{ name: "get_document" }, { name: "create_document" }, { name: "update_document" }],
@@ -882,6 +887,7 @@ test("documents create and update use create or update document tools", async ()
   );
 
   assert.deepEqual(seen, { name: "update_document", args: { id: "doc1", content: "Updated" } });
+  assert.doesNotMatch(updateOutput, /help\[/);
 });
 
 test("explicit create commands reject id before MCP calls", async () => {
@@ -953,7 +959,8 @@ test("documents create returns compact mutation output", async () => {
   assert.match(output, /id: doc1/);
   assert.match(output, /title: Spec/);
   assert.doesNotMatch(output, /extra/);
-  assert.match(output, /linear-axi documents view doc1/);
+  assert.doesNotMatch(output, /help\[/);
+  assert.doesNotMatch(output, /linear-axi documents view doc1/);
 });
 
 test("projects create wraps create_project and returns compact output", async () => {
@@ -974,6 +981,7 @@ test("projects create wraps create_project and returns compact output", async ()
   assert.match(output, /project:/);
   assert.match(output, /id: p1/);
   assert.doesNotMatch(output, /extra/);
+  assert.doesNotMatch(output, /help\[/);
 });
 
 test("projects create maps team when falling back to save_project create shape", async () => {
@@ -993,6 +1001,7 @@ test("projects create maps team when falling back to save_project create shape",
   assert.deepEqual(seen, { name: "save_project", args: { name: "Roadmap", summary: "Plan", setTeams: ["ENG"] } });
   assert.match(output, /project:/);
   assert.match(output, /team: ENG/);
+  assert.doesNotMatch(output, /help\[/);
 });
 
 test("projects create maps team when retrying unknown create_project with save_project", async () => {
@@ -1017,7 +1026,7 @@ test("projects create maps team when retrying unknown create_project with save_p
 
 test("projects update maps team when update falls back to save_project", async () => {
   let seen;
-  await run(
+  const updateOutput = await run(
     ["projects", "update", "--id", "p1", "--team", "ENG", "--summary", "Plan"],
     runtime({
       listTools: async () => [{ name: "save_project" }],
@@ -1030,6 +1039,7 @@ test("projects update maps team when update falls back to save_project", async (
   );
 
   assert.deepEqual(seen, { name: "save_project", args: { id: "p1", summary: "Plan", addTeams: ["ENG"] } });
+  assert.doesNotMatch(updateOutput, /help\[/);
 });
 
 test("milestones create treats text-only mutation responses as errors", async () => {

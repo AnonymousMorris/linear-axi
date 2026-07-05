@@ -1,6 +1,6 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { collectKnownArgs, formatCommandArg, rejectIdOnCreate } from "../lib/cli-helpers.js";
+import { collectKnownArgs, rejectIdOnCreate } from "../lib/cli-helpers.js";
 import { compactProjectMutation } from "../lib/linear-format.js";
 import { callAvailableTool, mutationData } from "../lib/mcp-tools.js";
 import { groupHelp, projectCreateHelp, projectUpdateHelp } from "./help.js";
@@ -78,11 +78,5 @@ function renderProjectMutation(result) {
     'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
     "Run `linear-axi teams list --fields id,name,key` to choose a team",
   ]);
-  return renderToon({
-    project: compactProjectMutation(project),
-    help: [
-      `Run \`linear-axi projects list --query ${formatCommandArg(project.name ?? "<name>")} --full\` to verify details`,
-      `Run \`linear-axi issues create --title "Task" --team "<team>" --project ${formatCommandArg(project.name ?? "<project>")}\` to add an issue`,
-    ],
-  });
+  return renderToon({ project: compactProjectMutation(project) });
 }
