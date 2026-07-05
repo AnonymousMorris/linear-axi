@@ -27,6 +27,10 @@ import { DESCRIPTION } from "./skill.js";
 const VERSION = readPackageVersion();
 
 const COMMANDS = {
+  ...Object.fromEntries(Object.keys(LIST_TOOL_ALIASES).map((command) => [
+    command,
+    (args, runtime) => listResourceCommand(command, args, runtime),
+  ])),
   init: initCommand,
   auth: authCommand,
   issues: issueCommand,
@@ -43,10 +47,6 @@ const COMMANDS = {
   document: documentCommand,
   projects: projectCommand,
   project: projectCommand,
-  ...Object.fromEntries(Object.keys(LIST_TOOL_ALIASES).map((command) => [
-    command,
-    (args, runtime) => listResourceCommand(command, args, runtime),
-  ])),
 };
 
 export async function main(args, context) {

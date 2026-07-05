@@ -75,6 +75,72 @@ test("main exposes update check help without resolving Linear context", async ()
   assert.match(output, /update --check/);
 });
 
+test("main dispatches resource subcommands before list aliases", async () => {
+  const issueViewOutput = await runMain(["issues", "view", "LIN-1"], {
+    client: {
+      close: async () => {},
+      listTools: async () => [{ name: "get_issue" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "get_issue");
+        assert.deepEqual(args, { id: "LIN-1" });
+        return { structuredContent: { identifier: "LIN-1", title: "Fix dispatch" } };
+      },
+    },
+  });
+  assert.match(issueViewOutput, /title: Fix dispatch/);
+  assert.doesNotMatch(issueViewOutput, /unknown issues command: view/);
+
+  const issueCreateCalls = [];
+  const issueCreateOutput = await runMain(["issues", "create", "--title", "Task", "--team", "ENG", "--project", "Roadmap"], {
+    client: {
+      close: async () => {},
+      callTool: async (name, args) => {
+        issueCreateCalls.push({ name, args });
+        if (name === "list_issues") return { structuredContent: { issues: [] } };
+        return { structuredContent: { identifier: "LIN-2", title: "Task" } };
+      },
+    },
+  });
+  assert.deepEqual(issueCreateCalls, [
+    { name: "list_issues", args: { query: "Task", team: "ENG", limit: 10 } },
+    { name: "save_issue", args: { title: "Task", team: "ENG", project: "Roadmap" } },
+  ]);
+  assert.match(issueCreateOutput, /title: Task/);
+  assert.doesNotMatch(issueCreateOutput, /unknown issues command: create/);
+
+  const projectUpdateCalls = [];
+  const projectUpdateOutput = await runMain(["projects", "update", "--id", "p1", "--summary", "Plan"], {
+    client: {
+      close: async () => {},
+      callTool: async (name, args) => {
+        projectUpdateCalls.push({ name, args });
+        if (name === "list_projects") return { structuredContent: { projects: [{ id: "p1", name: "Roadmap" }] } };
+        return { structuredContent: { id: "p1", name: "Roadmap", summary: "Plan" } };
+      },
+    },
+  });
+  assert.deepEqual(projectUpdateCalls, [
+    { name: "list_projects", args: { query: "p1", limit: 10 } },
+    { name: "update_project", args: { id: "p1", summary: "Plan" } },
+  ]);
+  assert.match(projectUpdateOutput, /name: Roadmap/);
+  assert.doesNotMatch(projectUpdateOutput, /unknown projects command: update/);
+
+  const documentViewOutput = await runMain(["documents", "view", "doc1"], {
+    client: {
+      close: async () => {},
+      listTools: async () => [{ name: "get_document" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "get_document");
+        assert.deepEqual(args, { id: "doc1" });
+        return { structuredContent: { id: "doc1", title: "Spec" } };
+      },
+    },
+  });
+  assert.match(documentViewOutput, /title: Spec/);
+  assert.doesNotMatch(documentViewOutput, /unknown documents command: view/);
+});
+
 test("home uninitialized repo suggests project setup without global issue count", async () => {
   const parent = await mkdtemp(join(tmpdir(), "linear-axi-home-"));
   const repo = join(parent, "linear-axi");
