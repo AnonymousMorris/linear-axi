@@ -69,6 +69,7 @@ Installed copies also inherit the SDK built-in \`update\` command.
 Run \`linear-axi update --check\` to compare the installed version with npm, or \`linear-axi update\` to upgrade.
 
 Run \`npx -y linear-axi --help\` for global flags, \`npx -y linear-axi <resource> --help\` for grouped subcommands, or \`npx -y linear-axi <resource> <action> --help\` for focused flags.
+Run \`npx -y linear-axi --version\`, \`npx -y linear-axi -v\`, or \`npx -y linear-axi -V\` to print the resolved package version.
 
 ## Tips
 
