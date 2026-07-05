@@ -105,13 +105,7 @@ async function createIssueCommand(args, runtime) {
     'Run `linear-axi issues create --title "Title" --team "<team>"`',
     "Run `linear-axi projects list --full` to confirm project/team compatibility",
   ]);
-  return renderToon({
-    issue: compactIssueMutation(issue),
-    help: [
-      `Run \`linear-axi issues view ${issue.identifier ?? issue.id ?? "<id>"}\` to verify details`,
-      `Run \`linear-axi comments create --issue ${issue.identifier ?? issue.id ?? "<id>"} --body "..."\` to add context`,
-    ],
-  });
+  return renderToon({ issue: compactIssueMutation(issue) });
 }
 
 async function updateIssueCommand(args, runtime) {
@@ -146,8 +140,5 @@ async function updateIssueCommand(args, runtime) {
     'Run `linear-axi issues update --id LIN-123 --state "Done"`',
     "Run `linear-axi issues list --query <text>` to find the issue id",
   ]);
-  return renderToon({
-    issue: compactIssueMutation(issue),
-    help: [`Run \`linear-axi issues view ${issue.identifier ?? issue.id ?? toolArgs.id}\` to verify details`],
-  });
+  return renderToon({ issue: compactIssueMutation(issue) });
 }
