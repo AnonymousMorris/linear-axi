@@ -5,6 +5,10 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { main, run } from "../src/cli.js";
 
+const packageVersion = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
+
 test("top help exposes Linear resource commands", async () => {
   const output = await run(["--help"], runtime({}));
 
@@ -14,6 +18,61 @@ test("top help exposes Linear resource commands", async () => {
   assert.doesNotMatch(output, /statuses delete/);
   assert.doesNotMatch(output, /tools list/);
   assert.doesNotMatch(output, /call <tool>/);
+});
+
+test("main top help includes SDK update built-in", async () => {
+  const output = await runMain(["--help"]);
+
+  assert.match(output, /flags\[3\]:/);
+  assert.match(output, /-v\/-V\/--version/);
+  assert.match(output, /"built-in":/);
+  assert.match(output, /"update --check": Report current vs latest without installing/);
+});
+
+test("main top-level -h alias renders SDK help", async () => {
+  const output = await runMain(["-h"]);
+
+  assert.match(output, /^usage: linear-axi \[command\]/);
+  assert.match(output, /"built-in":/);
+  assert.doesNotMatch(output, /Flags must come after the command/);
+});
+
+test("main home uses SDK CLI description header", async () => {
+  const output = await runMain([], {
+    cwd: await makeNoGitTempDir() ?? process.cwd(),
+    client: {
+      close: async () => {},
+      listTools: async () => [{ name: "list_teams" }],
+      callTool: async () => ({ structuredContent: { teams: [{ workspace: { name: "Acme" } }] } }),
+    },
+  });
+
+  assert.match(output, /description: Agent ergonomic wrapper around the configured Linear MCP server/);
+  assert.doesNotMatch(output, /description: Linear project dashboard/);
+});
+
+test("main prints package version flags", async () => {
+  for (const flag of ["-v", "-V", "--version"]) {
+    assert.equal(await runMain([flag]), `${packageVersion.version}\n`);
+  }
+});
+
+test("main exposes update check help without resolving Linear context", async () => {
+  let called = false;
+  const output = await runMain(["update", "--help"], {
+    client: {
+      close: async () => {},
+      callTool: async () => {
+        called = true;
+        return {};
+      },
+    },
+  });
+
+  assert.equal(called, false);
+  assert.match(output, /command: update/);
+  assert.match(output, /"--check": Report current vs latest and exit without installing/);
+  assert.match(output, /update --check/);
 });
 
 test("home uninitialized repo suggests project setup without global issue count", async () => {
@@ -1816,9 +1875,10 @@ test("unsupported top-level resources use generic unknown-command handling witho
   assert.equal(called, false);
 });
 
-test("main renders human-readable error type descriptions", async () => {
+test("main uses SDK unknown-command handling without MCP calls", async () => {
   const writes = [];
   const originalExitCode = process.exitCode;
+  let called = false;
   process.exitCode = undefined;
   try {
     await main(
@@ -1830,7 +1890,8 @@ test("main renders human-readable error type descriptions", async () => {
         client: {
           close: async () => {},
           callTool: async () => {
-            throw new Error("should not call MCP for unknown commands");
+            called = true;
+            return {};
           },
         },
       },
@@ -1840,9 +1901,11 @@ test("main renders human-readable error type descriptions", async () => {
   }
 
   const output = writes.join("");
-  assert.match(output, /error: "unknown command: releases"/);
+  assert.equal(called, false);
+  assert.match(output, /error: "Unknown command: releases"/);
   assert.match(output, /code: VALIDATION_ERROR/);
-  assert.match(output, /type: The command input or saved local configuration is invalid\./);
+  assert.match(output, /Run `--help` to see available commands/);
+  assert.doesNotMatch(output, /type:/);
 });
 
 test("unsupported subcommands use generic unknown-subcommand handling without MCP calls", async () => {
@@ -1900,6 +1963,23 @@ async function waitFor(predicate) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error("timed out waiting for condition");
+}
+
+async function runMain(args, overrides = {}) {
+  const writes = [];
+  const originalExitCode = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    await main(args, {
+      cwd: process.cwd(),
+      env: {},
+      stdout: { write: (text) => writes.push(text) },
+      ...overrides,
+    });
+    return writes.join("");
+  } finally {
+    process.exitCode = originalExitCode;
+  }
 }
 
 function runtime(client) {

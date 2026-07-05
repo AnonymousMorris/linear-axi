@@ -5,8 +5,8 @@ export function topHelp() {
   return `usage: linear-axi [command] [args] [flags]
 commands[12]:
   (none)=dashboard, init, auth, issues, projects, teams, users, comments, documents, milestones, cycles, statuses, labels
-flags[2]:
-  --help, -h
+flags[3]:
+  --help, -h, -v/-V/--version
 examples:
   linear-axi
   linear-axi init --project "Roadmap"
@@ -16,6 +16,7 @@ examples:
   linear-axi documents view <id>
   linear-axi issues update --id LIN-123 --state Done
   linear-axi comments create --issue LIN-123 --body "Ready for review."
+  linear-axi update --check
 env[5]:
   LINEAR_AXI_MCP_URL, LINEAR_AXI_MCP_TOKEN, LINEAR_MCP_TOKEN, LINEAR_AXI_AUTH_FILE, CODEX_CONFIG
 `;
