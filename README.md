@@ -89,6 +89,17 @@ help[2]:
 Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Missing detail targets and failed pre-mutation existence checks return structured `NOT_FOUND` errors with search or create hints. Issue, project, document, and comment mutations return compact success objects with the id, title/name, URL, and no success hints except the conditional `comments list --full` escape hatch when a created comment body preview is truncated. Use `create` for new objects and `update` for edits. Other operational failures include an `OPERATION_ERROR` code. Updates verify the target exists before mutating, and comment creates verify the issue exists before adding the comment. Issue and project creates check for existing same-name items and return conflict hints when a likely duplicate already exists. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
 
 ```bash
+> linear-axi issues create --title "Fix auth" --team ENG --project Roadmap
+issue:
+  id: LIN-123
+  title: Fix auth
+  state: Todo
+  project: Roadmap
+  team: Engineering
+  url: https://linear.app/acme/issue/LIN-123/fix-auth
+```
+
+```bash
 > linear-axi issues view LIN-404
 error: issue not found: LIN-404
 code: NOT_FOUND
