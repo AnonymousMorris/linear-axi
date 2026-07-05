@@ -71,26 +71,6 @@ export const COMMENT_CONTINUATION_FLAGS = [
   "full",
 ];
 
-export function removedResourceCommand(command) {
-  throw usage(`${command} is not supported by the default Linear MCP server`, [
-    "Run `linear-axi issues list`",
-    "Run `linear-axi projects list`",
-    "Run `linear-axi teams list`",
-    "Run `linear-axi statuses list --team <team>`",
-  ]);
-}
-
-export function removedStatusCommand(subcommand) {
-  throw usage(`statuses ${subcommand} is not supported by the default Linear MCP server`, [
-    "Run `linear-axi statuses list --team <team>`",
-    "Run `linear-axi issues update --id <id> --state <state>`",
-  ]);
-}
-
-export function removedSaveCommand(resource, _args, help) {
-  throw usage(`linear-axi ${resource} save has been replaced by explicit create and update commands`, help);
-}
-
 export async function getIssueDetail(id, runtime) {
   try {
     const detailed = await callAvailableTool(runtime, ["get_issue"], { id });

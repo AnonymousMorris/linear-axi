@@ -24,53 +24,50 @@ import {
   ensureIssueExists,
   getIssueDetail,
   notFound,
-  removedSaveCommand,
 } from "./shared.js";
 
 export async function issueCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (subcommand === "--help" || subcommand === "-h") return groupHelp("issues", ["list", "view", "create", "update"]);
-  if (!subcommand || subcommand === "list") {
-    return aliasListCommand("issues", rest, runtime);
+
+  switch (subcommand ?? "list") {
+    case "list":
+      return aliasListCommand("issues", rest, runtime);
+    case "view":
+      return viewIssueCommand(rest, runtime);
+    case "create":
+      return createIssueCommand(rest, runtime);
+    case "update":
+      return updateIssueCommand(rest, runtime);
+    default:
+      throw usage(`unknown issues command: ${subcommand}`, [
+        "Run `linear-axi issues list`",
+        "Run `linear-axi issues view <id>`",
+        "Run `linear-axi issues update --id <id> --state done`",
+      ]);
   }
-  if (subcommand === "view") {
-    const parsed = parseFlags(rest, { boolean: ["help", "full"], example: "issues view LIN-123" });
-    if (parsed.help) return issueViewHelp();
-    const id = parsed.positionals[0];
-    if (!id) throw usage("issue id is required", ["Run `linear-axi issues view <id>`"]);
-    if (id === "all") throw usage("issues view expects one issue id", [
-      "Run `linear-axi issues list --limit 50` to view many issues",
-      "Run `linear-axi issues view <id>` to view one issue",
-    ]);
-    const detail = await getIssueDetail(id, runtime);
-    if (!detail) throw notFound("issue", id, [
-      `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
-      'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
-    ]);
-    if (parsed.full) return renderToon({ issue: detail });
-    const compact = compactIssueDetail(detail);
-    return renderToon({
-      issue: compact.issue,
-      ...(compact.truncated ? { help: [`Run \`linear-axi issues view ${id} --full\` to show the complete issue`] } : {}),
-    });
-  }
-  if (subcommand === "save") {
-    return removedSaveCommand("issues", rest, [
-      'Run `linear-axi issues create --title "Title" --team "<team>"`',
-      'Run `linear-axi issues update --id LIN-123 --state "Done"`',
-    ]);
-  }
-  if (subcommand === "create") {
-    return createIssueCommand(rest, runtime);
-  }
-  if (subcommand === "update") {
-    return updateIssueCommand(rest, runtime);
-  }
-  throw usage(`unknown issues command: ${subcommand}`, [
-    "Run `linear-axi issues list`",
-    "Run `linear-axi issues view <id>`",
-    "Run `linear-axi issues update --id <id> --state done`",
+}
+
+async function viewIssueCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help", "full"], example: "issues view LIN-123" });
+  if (parsed.help) return issueViewHelp();
+  const id = parsed.positionals[0];
+  if (!id) throw usage("issue id is required", ["Run `linear-axi issues view <id>`"]);
+  if (id === "all") throw usage("issues view expects one issue id", [
+    "Run `linear-axi issues list --limit 50` to view many issues",
+    "Run `linear-axi issues view <id>` to view one issue",
   ]);
+  const detail = await getIssueDetail(id, runtime);
+  if (!detail) throw notFound("issue", id, [
+    `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
+    'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
+  ]);
+  if (parsed.full) return renderToon({ issue: detail });
+  const compact = compactIssueDetail(detail);
+  return renderToon({
+    issue: compact.issue,
+    ...(compact.truncated ? { help: [`Run \`linear-axi issues view ${id} --full\` to show the complete issue`] } : {}),
+  });
 }
 
 async function createIssueCommand(args, runtime) {

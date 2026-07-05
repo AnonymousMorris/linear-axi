@@ -7,38 +7,48 @@ import { authFinishHelp, authLoginHelp, groupHelp } from "./help.js";
 export async function authCommand(args, runtime) {
   const [subcommand, ...rest] = args;
   if (subcommand === "--help" || subcommand === "-h") return groupHelp("auth", ["login", "finish"]);
-  if (subcommand === "login") {
-    const parsed = parseFlags(rest, { boolean: ["help", "manual"], example: "auth login" });
-    if (parsed.help) return authLoginHelp();
-    try {
-      await runtime.client.listTools();
-      return renderToon({ auth: "Linear MCP OAuth already authorized" });
-    } catch (error) {
-      if (error.authorizationUrl) {
-        if (parsed.manual) {
-          return renderToon({
-            auth: "Linear MCP OAuth authorization required",
-            url: error.authorizationUrl,
-            help: ["Open the URL, copy the code, then run `linear-axi auth finish --code <code>`"],
-          });
-        }
 
-        return completeLoginWithCallback(error.authorizationUrl, runtime, parsed);
+  switch (subcommand) {
+    case "login":
+      return loginCommand(rest, runtime);
+    case "finish":
+      return finishCommand(rest, runtime);
+    default:
+      throw usage(`unknown auth command: ${subcommand ?? ""}`.trim(), [
+        "Run `linear-axi auth login`",
+        "Run `linear-axi auth finish --code <code>`",
+      ]);
+  }
+}
+
+async function loginCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help", "manual"], example: "auth login" });
+  if (parsed.help) return authLoginHelp();
+  try {
+    await runtime.client.listTools();
+    return renderToon({ auth: "Linear MCP OAuth already authorized" });
+  } catch (error) {
+    if (error.authorizationUrl) {
+      if (parsed.manual) {
+        return renderToon({
+          auth: "Linear MCP OAuth authorization required",
+          url: error.authorizationUrl,
+          help: ["Open the URL, copy the code, then run `linear-axi auth finish --code <code>`"],
+        });
       }
-      throw error;
+
+      return completeLoginWithCallback(error.authorizationUrl, runtime, parsed);
     }
+    throw error;
   }
-  if (subcommand === "finish") {
-    const parsed = parseFlags(rest, { boolean: ["help"], example: "auth finish --code <code>" });
-    if (parsed.help) return authFinishHelp();
-    if (!parsed.code) throw usage("--code is required", ["Run `linear-axi auth finish --code <code>`"]);
-    await runtime.client.finishAuth(parsed.code);
-    return renderToon({ auth: "Linear MCP OAuth authorized" });
-  }
-  throw usage(`unknown auth command: ${subcommand ?? ""}`.trim(), [
-    "Run `linear-axi auth login`",
-    "Run `linear-axi auth finish --code <code>`",
-  ]);
+}
+
+async function finishCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], example: "auth finish --code <code>" });
+  if (parsed.help) return authFinishHelp();
+  if (!parsed.code) throw usage("--code is required", ["Run `linear-axi auth finish --code <code>`"]);
+  await runtime.client.finishAuth(parsed.code);
+  return renderToon({ auth: "Linear MCP OAuth authorized" });
 }
 
 async function completeLoginWithCallback(authorizationUrl, runtime, parsed) {

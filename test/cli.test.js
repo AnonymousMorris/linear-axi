@@ -1287,7 +1287,7 @@ test("statuses list does not fall back to status updates", async () => {
   );
 });
 
-test("removed releases command returns usage without MCP call", async () => {
+test("unsupported top-level resources use generic unknown-command handling without MCP calls", async () => {
   let called = false;
 
   await assert.rejects(
@@ -1300,13 +1300,24 @@ test("removed releases command returns usage without MCP call", async () => {
         },
       }),
     ),
-    /releases is not supported by the default Linear MCP server/,
+    (error) => {
+      assert.equal(error.kind, "usage");
+      assert.match(error.message, /unknown command: releases/);
+      assert.deepEqual(error.help, [
+        "Run `linear-axi`",
+        'Run `linear-axi init --project "<project>"`',
+        "Run `linear-axi issues list`",
+        "Run `linear-axi projects list`",
+        "Run `linear-axi teams list`",
+      ]);
+      return true;
+    },
   );
 
   assert.equal(called, false);
 });
 
-test("removed status mutations return usage without MCP call", async () => {
+test("unsupported subcommands use generic unknown-subcommand handling without MCP calls", async () => {
   let called = false;
   const client = runtime({
     callTool: async () => {
@@ -1317,11 +1328,31 @@ test("removed status mutations return usage without MCP call", async () => {
 
   await assert.rejects(
     () => run(["statuses", "save", "--type", "project", "--project", "Roadmap"], client),
-    /statuses save is not supported by the default Linear MCP server/,
+    /unknown statuses command: save/,
   );
   await assert.rejects(
     () => run(["statuses", "delete", "--type", "project", "--id", "status-id"], client),
-    /statuses delete is not supported by the default Linear MCP server/,
+    /unknown statuses command: delete/,
+  );
+  await assert.rejects(
+    () => run(["issues", "save", "--title", "Task"], client),
+    /unknown issues command: save/,
+  );
+  await assert.rejects(
+    () => run(["projects", "save", "--name", "Roadmap"], client),
+    /unknown projects command: save/,
+  );
+  await assert.rejects(
+    () => run(["documents", "save", "--title", "Spec"], client),
+    /unknown documents command: save/,
+  );
+  await assert.rejects(
+    () => run(["comments", "save", "--issue", "LIN-1"], client),
+    /unknown comments command: save/,
+  );
+  await assert.rejects(
+    () => run(["milestones", "save", "--project", "Roadmap"], client),
+    /unknown milestones command: save/,
   );
 
   assert.equal(called, false);

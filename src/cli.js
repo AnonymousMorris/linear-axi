@@ -17,7 +17,6 @@ import { projectCommand } from "./commands/projects.js";
 import {
   LIST_TOOL_ALIASES,
   normalizeError,
-  removedResourceCommand,
 } from "./commands/shared.js";
 import { statusCommand } from "./commands/statuses.js";
 
@@ -55,7 +54,6 @@ export async function run(args, runtime) {
   if (command === "statuses" || command === "status") return statusCommand(rest, runtime);
   if (command === "documents" || command === "document") return documentCommand(rest, runtime);
   if (command === "projects" || command === "project") return projectCommand(rest, runtime);
-  if (command === "releases" || command === "release") return removedResourceCommand(command);
   if (command in LIST_TOOL_ALIASES) return listResourceCommand(command, rest, runtime);
 
   throw usage(`unknown command: ${command}`, [
