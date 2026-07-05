@@ -57,7 +57,7 @@ This validates the project in the authenticated Linear workspace and writes `.li
 
 ## Commands
 
-The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
+The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference. Use `linear-axi -v`, `linear-axi -V`, or `linear-axi --version` to print the installed version.
 
 ```sh
 linear-axi

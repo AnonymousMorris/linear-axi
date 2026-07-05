@@ -67,7 +67,7 @@ When using \`npx -y linear-axi\`, npx already resolves the package on demand.
 Installed copies also inherit the SDK built-in \`update\` command.
 Run \`linear-axi update --check\` to compare the installed version with npm, or \`linear-axi update\` to upgrade.
 
-Run \`npx -y linear-axi --help\` for global flags, \`npx -y linear-axi <resource> --help\` for grouped subcommands, or \`npx -y linear-axi <resource> <action> --help\` for focused flags.
+Run \`npx -y linear-axi --help\` for global flags, \`npx -y linear-axi <resource> --help\` for grouped subcommands, or \`npx -y linear-axi <resource> <action> --help\` for focused flags. Use \`npx -y linear-axi --version\` when you need the resolved CLI version.
 
 ## Tips
 
