@@ -67,7 +67,8 @@ async function linearWorkspaceName(runtime) {
   }
 }
 
-function extractWorkspaceName(data) {
+function extractWorkspaceName(data, options = {}) {
+  const { allowBareName = true } = options;
   if (!data || typeof data !== "object") return null;
   for (const key of ["workspace", "organization"]) {
     const nested = extractWorkspaceName(data[key]);
@@ -77,11 +78,11 @@ function extractWorkspaceName(data) {
     const workspace = workspaceFromLinearUrl(data.url);
     if (workspace) return workspace;
   }
-  if (typeof data.name === "string" && data.name.trim()) return data.name.trim();
+  if (allowBareName && typeof data.name === "string" && data.name.trim()) return data.name.trim();
   for (const key of ["projects", "teams", "nodes", "items", "data"]) {
     if (!Array.isArray(data[key])) continue;
     for (const item of data[key]) {
-      const nested = extractWorkspaceName(item);
+      const nested = extractWorkspaceName(item, { allowBareName: false });
       if (nested) return nested;
     }
   }

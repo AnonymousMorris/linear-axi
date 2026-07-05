@@ -48,6 +48,39 @@ test("home uninitialized repo suggests project setup without global issue count"
   assert.doesNotMatch(output, /Global issue/);
 });
 
+test("home does not use project row names as workspace names", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+
+  const output = await run(
+    [],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }],
+      callTool: async () => ({ structuredContent: { projects: [{ name: "Roadmap" }] } }),
+    }),
+  );
+
+  assert.match(output, /workspace: unknown\nproject: not initialized/);
+  assert.doesNotMatch(output, /workspace: Roadmap/);
+});
+
+test("home derives workspace names from Linear project URLs", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+
+  const output = await run(
+    [],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }],
+      callTool: async () => ({ structuredContent: { projects: [{ name: "Roadmap", url: "https://linear.app/acme/project/roadmap" }] } }),
+    }),
+  );
+
+  assert.match(output, /workspace: acme\nproject: not initialized/);
+});
+
 test("home auth errors suggest login before list commands for initialized repos", async () => {
   const parent = await mkdtemp(join(tmpdir(), "linear-axi-home-"));
   const repo = join(parent, "linear-axi");
