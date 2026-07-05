@@ -18,6 +18,18 @@ That is enough for agents that support skills. The skill teaches the agent to ru
 
 `-g` installs the skill globally. Drop `-g` to install it only for the current project.
 
+To install the skill from a local checkout before the GitHub repository is public or updated, run:
+
+```sh
+npx skills add . --skill linear-axi -g
+```
+
+To verify discovery without installing anything:
+
+```sh
+npx skills add . --skill linear-axi --list
+```
+
 To install the CLI directly from a checkout:
 
 ```sh
