@@ -514,6 +514,32 @@ test("init validates the project and saves the authenticated workspace", async (
   assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: "Roadmap" });
 });
 
+test("init force repairs stale workspace metadata for the same project", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ workspace: "OldCo", project: "Roadmap" }), "utf8");
+
+  const initOutput = await run(
+    ["init", "--project", "Roadmap", "--force"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "list_projects");
+        assert.deepEqual(args, { query: "Roadmap", limit: 10 });
+        return {
+          structuredContent: {
+            projects: [{ name: "Roadmap", workspace: { name: "Acme" } }],
+          },
+        };
+      },
+    }),
+  );
+
+  assert.match(initOutput, /project: initialized/);
+  assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: "Roadmap" });
+});
+
 test("repo project default validates before project-scoped list commands", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));

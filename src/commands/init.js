@@ -31,7 +31,7 @@ export async function initCommand(args, runtime) {
     existing = null;
   }
   if (existing?.project === project) {
-    const validated = await validateRepoProject(existing, runtime);
+    const validated = await validateRepoProject(parsed.force ? { project } : existing, runtime);
     if (validated.workspace && existing.workspace !== validated.workspace) {
       await writeProjectFile(path, validated);
       return renderToon({
