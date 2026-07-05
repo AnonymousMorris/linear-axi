@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { usage } from "../args.js";
+import { formatCommandArg } from "./cli-helpers.js";
 import { asArray, extractData } from "./mcp-tools.js";
 
 export async function applyRepoProjectDefault(toolArgs, runtime, options = {}) {
@@ -56,7 +57,7 @@ export async function validateRepoProject(repoProject, runtime, options = {}) {
     throw invalidRepoProject(repoProject.project, options.command, repoProject.workspace);
   }
   return {
-    project: projectName(match, repoProject.project),
+    project: repoProject.project,
     ...(workspace ? { workspace } : {}),
   };
 }
@@ -118,7 +119,7 @@ async function canValidateProjects(runtime) {
 
 function invalidRepoProject(project, command, workspace) {
   return usage(`The saved default Linear project does not exist in the authenticated workspace: ${project}`, [
-    `Run \`linear-axi projects list --query "${project}" --fields id,name,status\` to search the current workspace`,
+    `Run \`linear-axi projects list --query ${formatCommandArg(project)} --fields id,name,status\` to search the current workspace`,
     `Run \`linear-axi init --project "<project>" --force\` to update .linear-project`,
     ...(workspace ? [`The saved workspace is ${workspace}`] : []),
     ...(command ? [`Run \`${command} --project "<project>"\` to choose a project once`] : []),
@@ -128,10 +129,6 @@ function invalidRepoProject(project, command, workspace) {
 function projectMatches(project, value) {
   const expected = normalizeProject(value);
   return [project.id, project.slugId, project.name].some((candidate) => normalizeProject(candidate) === expected);
-}
-
-function projectName(project, fallback) {
-  return String(project.name ?? project.slugId ?? project.id ?? fallback).trim();
 }
 
 function normalizeProject(value) {

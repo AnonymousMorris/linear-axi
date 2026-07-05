@@ -159,7 +159,7 @@ test("home warns when configured project is not in the current workspace", async
   assert.match(output, /workspace: acme\nproject: Linear AXI\n/);
   assert.match(output, /status: Default Linear project is invalid/);
   assert.match(output, /error: "The saved default Linear project does not exist in the authenticated workspace: Linear AXI"/);
-  assert.match(output, /Run `linear-axi projects list --query "Linear AXI" --fields id,name,status` to search the current workspace/);
+  assert.match(output, /Run `linear-axi projects list --query 'Linear AXI' --fields id,name,status` to search the current workspace/);
   assert.match(output, /Run `linear-axi init --project "<project>" --force` to update \.linear-project/);
 });
 
@@ -514,6 +514,31 @@ test("init validates the project and saves the authenticated workspace", async (
   assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: "Roadmap" });
 });
 
+test("init preserves project ids after validation", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+
+  const initOutput = await run(
+    ["init", "--project", "project-id-1"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "list_projects");
+        assert.deepEqual(args, { query: "project-id-1", limit: 10 });
+        return {
+          structuredContent: {
+            projects: [{ id: "project-id-1", name: "Roadmap", workspace: { name: "Acme" } }],
+          },
+        };
+      },
+    }),
+  );
+
+  assert.match(initOutput, /workspace: Acme/);
+  assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: "project-id-1" });
+});
+
 test("init force repairs stale workspace metadata for the same project", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));
@@ -563,6 +588,53 @@ test("repo project default validates before project-scoped list commands", async
   );
 
   assert.equal(issueListCalled, false);
+});
+
+test("repo project validation preserves configured slug for downstream commands", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "roadmap-slug" }), "utf8");
+  let seen;
+
+  await run(
+    ["issues", "list"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "list_projects" }, { name: "list_issues" }],
+      callTool: async (name, args) => {
+        if (name === "list_projects") {
+          assert.deepEqual(args, { query: "roadmap-slug", limit: 10 });
+          return { structuredContent: { projects: [{ slugId: "roadmap-slug", name: "Roadmap" }] } };
+        }
+        seen = { name, args };
+        return { structuredContent: { issues: [] } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "list_issues", args: { project: "roadmap-slug", limit: 50 } });
+});
+
+test("invalid repo project help quotes saved project tokens", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "$(touch /tmp/pwned)" }), "utf8");
+
+  await assert.rejects(
+    () => run(
+      ["issues", "list"],
+      runtime({
+        cwd: repo,
+        listTools: async () => [{ name: "list_projects" }],
+        callTool: async () => ({ structuredContent: { projects: [] } }),
+      }),
+    ),
+    (error) => {
+      assert.match(error.help[0], /--query '\$\(touch \/tmp\/pwned\)' --fields id,name,status/);
+      assert.doesNotMatch(error.help[0], /--query "\$\(touch \/tmp\/pwned\)"/);
+      return true;
+    },
+  );
 });
 
 test("repo project default applies to issue creates but not updates", async () => {

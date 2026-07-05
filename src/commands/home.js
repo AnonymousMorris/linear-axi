@@ -1,5 +1,6 @@
 import { collapseHome } from "../config.js";
 import { renderToon } from "../format.js";
+import { formatCommandArg } from "../lib/cli-helpers.js";
 import { paginationInfo } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData } from "../lib/mcp-tools.js";
 import { extractWorkspaceName, readRepoProject, validateRepoProject, withRepoProject } from "../lib/repo-project.js";
@@ -48,7 +49,7 @@ export async function homeCommand(runtime) {
     output.status = "Default Linear project is invalid";
     output.error = error;
     output.help = [
-      `Run \`linear-axi projects list --query "${repoProject.project}" --fields id,name,status\` to search the current workspace`,
+      `Run \`linear-axi projects list --query ${formatCommandArg(repoProject.project)} --fields id,name,status\` to search the current workspace`,
       'Run `linear-axi init --project "<project>" --force` to update .linear-project',
     ];
     return renderToon(output);
