@@ -66,9 +66,9 @@ linear-axi init --project "Roadmap"
 
 ## Commands
 
-The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. The shared AXI runtime owns top-level help, `-h`, version flags, unknown-command handling, the default dashboard frame, and the built-in `update` command. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
+The CLI is organized as `linear-axi <resource> <action>`. Internally, public Linear actions forward to the matching Linear MCP tool, then format the result for agents. The shared AXI runtime owns top-level help, `-h`, version flags, unknown-command handling, the default dashboard frame, and the built-in `update` command. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
 
-Delete commands accept either `--id <id>` or a positional id. Milestone deletes use `--project <project>` when provided, or the repo default project from `.linear-project`.
+Documented MCP-backed delete commands accept either `--id <id>` or a positional id. Milestone deletes use `--project <project>` when provided, or the repo default project from `.linear-project`.
 
 ```sh
 linear-axi
@@ -111,7 +111,7 @@ linear-axi update
 
 `projects delete` and `documents delete` are intentionally hidden from CLI help, help hints, and the agent skill. They bypass the MCP tool surface and call Linear's GraphQL API directly, so they are meant for test cleanup only.
 
-They require `--dangerously-skip-permissions` and a Linear GraphQL token in `LINEAR_API_KEY` or `LINEAR_AXI_GRAPHQL_TOKEN`. Linear's delete semantics are trash/archive semantics; the resources can be restored in Linear.
+They require `--dangerously-skip-permissions` before any GraphQL call. For test cleanup, prefer an explicit Linear GraphQL token in `LINEAR_API_KEY` or `LINEAR_AXI_GRAPHQL_TOKEN`; the hidden commands also honor `LINEAR_AXI_GRAPHQL_AUTHORIZATION`, `LINEAR_API_TOKEN`, existing Linear MCP bearer-token environment variables, saved OAuth credentials, and `LINEAR_AXI_GRAPHQL_URL` for non-default GraphQL endpoints. Linear's delete semantics are trash/archive semantics; the resources can be restored in Linear.
 
 ```sh
 LINEAR_API_KEY=<token> linear-axi projects delete --id <id> --dangerously-skip-permissions
