@@ -288,12 +288,13 @@ examples:
 }
 
 export function milestoneDeleteHelp() {
-  return `usage: linear-axi milestones delete --project <project> --id <id>
+  return `usage: linear-axi milestones delete [--project <project>] <id>|--id <id>
 description: Delete a Linear milestone by id.
 flags:
   --id <id>
   --project <project>  overrides the repo default project
 examples:
+  linear-axi milestones delete <id>
   linear-axi milestones delete --project "Roadmap" --id <id>
 `;
 }
@@ -385,9 +386,10 @@ examples:
 }
 
 export function issueDeleteHelp() {
-  return `usage: linear-axi issues delete --id <id>
+  return `usage: linear-axi issues delete <id>|--id <id>
 description: Delete a Linear issue by id.
 examples:
+  linear-axi issues delete LIN-123
   linear-axi issues delete --id LIN-123
 `;
 }

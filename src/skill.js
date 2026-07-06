@@ -3,7 +3,8 @@ import { topHelp } from "./commands/help.js";
 export const SKILL_DESCRIPTION =
   "Operate Linear through the linear-axi CLI - issues, projects, teams, users, comments, documents, " +
   "milestones, cycles, statuses, labels, auth, and repo project setup. Use whenever a task touches " +
-  "Linear: listing or creating issues, updating project work, reading documents, or managing comments.";
+  "Linear: listing, creating, updating, or deleting issues and milestones; updating project work; " +
+  "reading documents; or managing comments.";
 
 export const SKILL_AUTHOR = "Morris";
 export const HERMES_TAGS = ["linear", "issues", "projects", "planning"];
@@ -47,13 +48,13 @@ linear-axi uses the configured Linear MCP server. The default remote endpoint us
 
 ## When to use
 
-Use linear-axi whenever a task touches Linear: listing, viewing, creating, or updating issues; browsing or editing projects and documents; creating, listing, or deleting comments; checking teams, users, labels, cycles, milestones, or statuses; or binding the current repo to a default Linear project.
+Use linear-axi whenever a task touches Linear: listing, viewing, creating, updating, or deleting issues; browsing or editing projects and documents; creating, listing, or deleting comments; creating, updating, or deleting milestones; checking teams, users, labels, cycles, or statuses; or binding the current repo to a default Linear project.
 
 ## Workflow
 
 1. Run \`npx -y linear-axi\` with no arguments for a dashboard of the current repo. Uninitialized repos show setup hints instead of workspace-wide issue counts.
 2. List Linear projects with \`npx -y linear-axi projects list\`, then bind a repository with \`npx -y linear-axi init --project "<project>"\`; this accepts a project id, name, or slug, validates the project, and stores discovered workspace metadata in \`.linear-project\`.
-3. Drill in command-first: \`issues list\`, \`issues view <id>\`, \`projects list\`, \`documents view <id>\`, \`comments list --issue <id>\`, \`comments delete --id <id>\`, and so on.
+3. Drill in command-first: \`issues list\`, \`issues view <id>\`, \`issues delete <id>\`, \`projects list\`, \`documents view <id>\`, \`comments list --issue <id>\`, \`comments delete --id <id>\`, \`milestones delete <id>\`, and so on.
 4. Add \`--fields\` for columns, \`--cursor\` for pagination, and \`--full\` only when complete content is needed.
 5. Linear operation responses include contextual next-step hints under \`help:\` when recovery or follow-up is useful - follow them.
 

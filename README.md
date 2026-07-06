@@ -68,6 +68,8 @@ linear-axi init --project "Roadmap"
 
 The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. The shared AXI runtime owns top-level help, `-h`, version flags, unknown-command handling, the default dashboard frame, and the built-in `update` command. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
 
+Delete commands accept either `--id <id>` or a positional id. Milestone deletes use `--project <project>` when provided, or the repo default project from `.linear-project`.
+
 ```sh
 linear-axi
 linear-axi init --project "Roadmap"
@@ -144,6 +146,7 @@ help[2]:
 ```
 
 Detail commands such as `issues view <id>` and `documents view <id>` return one item. 
+Delete commands return compact confirmations with the deleted resource id and `deleted: true`.
 
 ```bash
 > linear-axi issues create --title "Fix auth" --team ENG --project Roadmap
