@@ -10,11 +10,12 @@ import {
   compactIssueDetail,
   compactIssueMutation,
 } from "../lib/linear-format.js";
-import { mutationData } from "../lib/mcp-tools.js";
+import { callAvailableTool, mutationData } from "../lib/mcp-tools.js";
 import { applyRepoProjectDefault } from "../lib/repo-project.js";
 import {
   groupHelp,
   issueCreateHelp,
+  issueDeleteHelp,
   issueUpdateHelp,
   issueViewHelp,
 } from "./help.js";
@@ -28,7 +29,7 @@ import {
 
 export async function issueCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("issues", ["list", "view", "create", "update"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("issues", ["list", "view", "create", "update", "delete"]);
 
   switch (subcommand ?? "list") {
     case "list":
@@ -39,11 +40,14 @@ export async function issueCommand(args, runtime) {
       return createIssueCommand(rest, runtime);
     case "update":
       return updateIssueCommand(rest, runtime);
+    case "delete":
+      return deleteIssueCommand(rest, runtime);
     default:
       throw usage(`unknown issues command: ${subcommand}`, [
         "Run `linear-axi issues list`",
         "Run `linear-axi issues view <id>`",
         "Run `linear-axi issues update --id <id> --state done`",
+        "Run `linear-axi issues delete --id <id>`",
       ]);
   }
 }
@@ -144,4 +148,27 @@ async function updateIssueCommand(args, runtime) {
     "Run `linear-axi issues list --query <text>` to find the issue id",
   ]);
   return renderToon({ issue: compactIssueMutation(issue) });
+}
+
+async function deleteIssueCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], example: "issues delete --id LIN-123" });
+  if (parsed.help) return issueDeleteHelp();
+  const id = parsed.id ?? parsed.positionals[0];
+  if (!id) {
+    throw usage("issues delete requires --id", [
+      "Run `linear-axi issues list --query <text>` to find the issue id",
+      "Run `linear-axi issues delete --id <id>`",
+    ]);
+  }
+  const result = await callAvailableTool(runtime, ["delete_issue"], { id });
+  const issue = mutationData(result, [
+    "Run `linear-axi issues list --query <text>` to find the issue id",
+    "Run `linear-axi issues delete --id <id>`",
+  ]);
+  return renderToon({
+    issue: {
+      id: issue.id ?? issue.identifier ?? id,
+      deleted: issue.deleted ?? issue.success ?? true,
+    },
+  });
 }
