@@ -1,6 +1,6 @@
 {
   "name": "linear-axi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AXI wrapper for the Linear MCP server",
   "type": "module",
   "engines": {

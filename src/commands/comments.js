@@ -7,8 +7,8 @@ import {
   readTextFlag,
 } from "../lib/cli-helpers.js";
 import { compactCommentMutation, compactComments, paginationInfo } from "../lib/linear-format.js";
-import { asArray, extractData, mutationData } from "../lib/mcp-tools.js";
-import { commentCreateHelp, commentListHelp, groupHelp } from "./help.js";
+import { asArray, callAvailableTool, extractData, mutationData } from "../lib/mcp-tools.js";
+import { commentCreateHelp, commentDeleteHelp, commentListHelp, groupHelp } from "./help.js";
 import {
   COMMENT_CONTINUATION_FLAGS,
   DEFAULT_LIMIT,
@@ -18,15 +18,21 @@ import {
 
 export async function commentCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("comments", ["list", "create"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("comments", ["list", "create", "delete"]);
 
   switch (subcommand ?? "list") {
     case "list":
       return listCommentsCommand(rest, runtime);
     case "create":
       return createCommentCommand(rest, runtime);
+    case "delete":
+      return deleteCommentCommand(rest, runtime);
     default:
-      throw usage(`unknown comments command: ${subcommand}`, ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments create --issue LIN-123 --body \"...\"`"]);
+      throw usage(`unknown comments command: ${subcommand}`, [
+        "Run `linear-axi comments list --issue LIN-123`",
+        "Run `linear-axi comments create --issue LIN-123 --body \"...\"`",
+        "Run `linear-axi comments delete --id <id>`",
+      ]);
   }
 }
 
@@ -89,5 +95,29 @@ async function createCommentCommand(args, runtime) {
     ...(compact.truncated
       ? { help: [`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`] }
       : {}),
+  });
+}
+
+async function deleteCommentCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], example: "comments delete --id <id>" });
+  if (parsed.help) return commentDeleteHelp();
+  rejectUnsupportedCommentFlags(parsed);
+  const id = parsed.id ?? parsed.positionals[0];
+  if (!id) {
+    throw usage("comments delete requires --id", [
+      "Run `linear-axi comments list --issue LIN-123` to find comment ids",
+      "Run `linear-axi comments delete --id <id>`",
+    ]);
+  }
+  const result = await callAvailableTool(runtime, ["delete_comment"], { id });
+  const comment = mutationData(result, [
+    "Run `linear-axi comments list --issue LIN-123` to find comment ids",
+    "Run `linear-axi comments delete --id <id>`",
+  ]);
+  return renderToon({
+    comment: {
+      id: comment.id ?? id,
+      deleted: comment.deleted ?? comment.success ?? true,
+    },
   });
 }

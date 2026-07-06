@@ -89,6 +89,7 @@ linear-axi users list --query morris
 linear-axi labels list --team ENG
 linear-axi comments list --issue LIN-123
 linear-axi comments create --issue LIN-123 --body "Ready for review."
+linear-axi comments delete --id <id>
 linear-axi documents view <id>
 linear-axi documents create --title "Spec" --team ENG --content-file spec.md
 linear-axi documents update --id <id> --content "Updated"
