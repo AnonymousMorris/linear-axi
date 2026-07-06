@@ -52,6 +52,12 @@ export function asArray(data) {
   return [];
 }
 
+export async function hasTool(runtime, name) {
+  if (typeof runtime.client.listTools !== "function") return false;
+  const tools = await runtime.client.listTools();
+  return tools.some((tool) => tool.name === name);
+}
+
 export function mutationData(result, help) {
   const data = extractData(result);
   if (data && typeof data === "object" && Object.keys(data).length === 1 && typeof data.text === "string") {

@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { usage } from "../args.js";
 import { formatCommandArg } from "./cli-helpers.js";
-import { asArray, extractData } from "./mcp-tools.js";
+import { asArray, extractData, hasTool } from "./mcp-tools.js";
 
 export async function applyRepoProjectDefault(toolArgs, runtime, options = {}) {
   const {
@@ -45,9 +45,7 @@ export async function validateRepoProject(repoProject, runtime, options = {}) {
   if (!repoProject) return null;
   if (!(await canValidateProjects(runtime))) return repoProject;
 
-  const listed = await runtime.client.callTool("list_projects", { query: repoProject.project, limit: 10 });
-  const projects = asArray(extractData(listed));
-  const match = projects.find((project) => projectMatches(project, repoProject.project));
+  const match = await getValidatingProject(repoProject.project, runtime);
   if (!match) {
     throw invalidRepoProject(repoProject.project, options.command);
   }
@@ -60,6 +58,18 @@ export async function validateRepoProject(repoProject, runtime, options = {}) {
     project: repoProject.project,
     ...(workspace ? { workspace } : {}),
   };
+}
+
+async function getValidatingProject(project, runtime) {
+  if (await hasTool(runtime, "get_project")) {
+    const detailed = await runtime.client.callTool("get_project", { query: project });
+    const data = extractData(detailed);
+    return projectMatches(data, project) ? data : null;
+  }
+
+  const listed = await runtime.client.callTool("list_projects", { query: project, limit: 10 });
+  const projects = asArray(extractData(listed));
+  return projects.find((candidate) => projectMatches(candidate, project)) ?? null;
 }
 
 export function projectFileValue(repoProject) {
@@ -114,7 +124,7 @@ export async function readProjectFile(path) {
 async function canValidateProjects(runtime) {
   if (typeof runtime.client.listTools !== "function") return false;
   const tools = await runtime.client.listTools();
-  return tools.some((tool) => tool.name === "list_projects");
+  return tools.some((tool) => tool.name === "get_project" || tool.name === "list_projects");
 }
 
 function invalidRepoProject(project, command, workspace) {

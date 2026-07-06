@@ -2,7 +2,7 @@ import { basename, resolve } from "node:path";
 import { AxiError, usage } from "../args.js";
 import { formatCommandArg } from "../lib/cli-helpers.js";
 import { sanitizeDocument } from "../lib/linear-format.js";
-import { asArray, callAvailableTool, extractData, isUnknownToolError } from "../lib/mcp-tools.js";
+import { asArray, callAvailableTool, extractData, hasTool, isUnknownToolError } from "../lib/mcp-tools.js";
 import { findGitRoot } from "../lib/repo-project.js";
 
 export const DEFAULT_LIMIT = 50;
@@ -111,6 +111,13 @@ export async function ensureIssueDoesNotExist(title, team, runtime) {
 }
 
 export async function getProjectDetail(id, runtime) {
+  if (await hasTool(runtime, "get_project")) {
+    const detailed = await runtime.client.callTool("get_project", { query: id });
+    const data = extractData(detailed);
+    if (isEmptyObject(data) || isBlankProjectDetail(data)) return null;
+    return data;
+  }
+
   const listed = await runtime.client.callTool("list_projects", { query: id, limit: 10 });
   const matches = asArray(extractData(listed)).filter((project) => project.id === id || project.slugId === id || isSameText(project.name, id));
   return matches[0] ?? null;
@@ -259,6 +266,10 @@ function isBlankIssueDetail(value) {
 
 function isBlankDocumentDetail(value) {
   return isBlankDetail(value, ["id", "title", "name"]);
+}
+
+function isBlankProjectDetail(value) {
+  return isBlankDetail(value, ["id", "slugId", "name"]);
 }
 
 function isBlankDetail(value, identityFields) {

@@ -598,6 +598,34 @@ test("init preserves project ids after validation", async () => {
   assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: "project-id-1" });
 });
 
+test("init validates project uuids with get_project when available", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  const projectId = "5bf051dd-8c53-4fd9-a606-58dbeae18ec4";
+
+  const initOutput = await run(
+    ["init", "--project", projectId],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "get_project" }, { name: "list_projects" }],
+      callTool: async (name, args) => {
+        assert.equal(name, "get_project");
+        assert.deepEqual(args, { query: projectId });
+        return {
+          structuredContent: {
+            id: projectId,
+            name: "Roadmap",
+            workspace: { name: "Acme" },
+          },
+        };
+      },
+    }),
+  );
+
+  assert.match(initOutput, /workspace: Acme/);
+  assert.deepEqual(JSON.parse(await readFile(join(repo, ".linear-project"), "utf8")), { workspace: "Acme", project: projectId });
+});
+
 test("init force repairs stale workspace metadata for the same project", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));
@@ -672,6 +700,32 @@ test("repo project validation preserves configured slug for downstream commands"
   );
 
   assert.deepEqual(seen, { name: "list_issues", args: { project: "roadmap-slug", limit: 50 } });
+});
+
+test("repo project validation accepts project uuids with get_project", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  const projectId = "5bf051dd-8c53-4fd9-a606-58dbeae18ec4";
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ workspace: "Acme", project: projectId }), "utf8");
+  let seen;
+
+  await run(
+    ["issues", "list"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "get_project" }, { name: "list_projects" }, { name: "list_issues" }],
+      callTool: async (name, args) => {
+        if (name === "get_project") {
+          assert.deepEqual(args, { query: projectId });
+          return { structuredContent: { id: projectId, name: "Roadmap", workspace: { name: "Acme" } } };
+        }
+        seen = { name, args };
+        return { structuredContent: { issues: [] } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "list_issues", args: { project: projectId, limit: 50 } });
 });
 
 test("invalid repo project help quotes saved project tokens", async () => {
@@ -1590,6 +1644,29 @@ test("projects update maps team when update falls back to save_project", async (
   assert.doesNotMatch(updateOutput, /help\[/);
 });
 
+test("projects update validates with get_project before mutation", async () => {
+  const calls = [];
+
+  await run(
+    ["projects", "update", "--id", "5bf051dd-8c53-4fd9-a606-58dbeae18ec4", "--summary", "Plan"],
+    runtime({
+      listTools: async () => [{ name: "get_project" }, { name: "save_project" }],
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        if (name === "get_project") {
+          return { structuredContent: { id: "5bf051dd-8c53-4fd9-a606-58dbeae18ec4", name: "Roadmap" } };
+        }
+        return { structuredContent: { id: "5bf051dd-8c53-4fd9-a606-58dbeae18ec4", name: "Roadmap" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_project", args: { query: "5bf051dd-8c53-4fd9-a606-58dbeae18ec4" } },
+    { name: "save_project", args: { id: "5bf051dd-8c53-4fd9-a606-58dbeae18ec4", summary: "Plan" } },
+  ]);
+});
+
 test("milestones create treats text-only mutation responses as errors", async () => {
   await assert.rejects(
     () => run(
@@ -1722,6 +1799,31 @@ test("projects update rejects a missing project before mutation", async () => {
   );
 
   assert.deepEqual(calls, [{ name: "list_projects", args: { query: "missing", limit: 10 } }]);
+});
+
+test("projects update rejects a missing project from get_project before mutation", async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () => run(
+      ["projects", "update", "--id", "missing", "--summary", "Plan"],
+      runtime({
+        listTools: async () => [{ name: "get_project" }, { name: "save_project" }],
+        callTool: async (name, args) => {
+          calls.push({ name, args });
+          return { content: [{ type: "text", text: "Error: Project not found" }], isError: true };
+        },
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "not_found");
+      assert.equal(error.code, "NOT_FOUND");
+      assert.match(error.message, /project not found: missing/);
+      return true;
+    },
+  );
+
+  assert.deepEqual(calls, [{ name: "get_project", args: { query: "missing" } }]);
 });
 
 test("resource group help is available before choosing a subcommand", async () => {
