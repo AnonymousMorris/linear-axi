@@ -58,7 +58,7 @@ In a headless environment, run `linear-axi auth login --manual`, open the URL, c
 
 ## Project setup
 
-We have store a .linear-project file to avoid having every new agent rediscover which linear project our current coding project is for. Run this once from a Git repository to bind the repo to its Linear project:
+We store a `.linear-project` file to avoid having every new agent rediscover which Linear project the current coding project is for. Run this once from a Git repository to bind the repo to its Linear project by id, name, or slug:
 
 ```sh
 linear-axi init --project "Roadmap"
