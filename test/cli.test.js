@@ -1073,6 +1073,59 @@ test("comments create returns compact preview output", async () => {
   assert.doesNotMatch(output, /Run `linear-axi comments list --issue LIN-1` to verify comments/);
 });
 
+test("comments delete calls delete_comment and returns compact confirmation", async () => {
+  let seen;
+  const output = await run(
+    ["comments", "delete", "--id", "c1"],
+    runtime({
+      listTools: async () => [{ name: "delete_comment" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { id: "c1", deleted: true, extra: "hidden" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "delete_comment", args: { id: "c1" } });
+  assert.match(output, /comment:/);
+  assert.match(output, /id: c1/);
+  assert.match(output, /deleted: true/);
+  assert.doesNotMatch(output, /extra/);
+  assert.doesNotMatch(output, /help\[/);
+});
+
+test("comments delete accepts a positional id and requires one before MCP calls", async () => {
+  let seen;
+  await run(
+    ["comments", "delete", "c1"],
+    runtime({
+      listTools: async () => [{ name: "delete_comment" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { success: true } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "delete_comment", args: { id: "c1" } });
+
+  let called = false;
+  await assert.rejects(
+    () => run(
+      ["comments", "delete"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /comments delete requires --id/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("comments create treats text-only mutation responses as errors", async () => {
   await assert.rejects(
     () => run(
@@ -1898,6 +1951,16 @@ test("issue group help summarizes list view create and update flags", async () =
   assert.match(output, /flags\{view\}:\n  --full \(show complete description without truncation\)/);
   assert.match(output, /flags\{create\}:\n  --title <text> \(required\), --team <team> \(required\)/);
   assert.match(output, /flags\{update\}:\n  --id <id> \(required\)/);
+});
+
+test("comment group help summarizes list create and delete flags", async () => {
+  const output = await run(["comments", "--help"], runtime({}));
+
+  assert.match(output, /subcommands\[3\]:\n  list, create, delete/);
+  assert.match(output, /flags\{list\}:/);
+  assert.match(output, /flags\{create\}:/);
+  assert.match(output, /flags\{delete\}:\n  --id <id> \(required\)/);
+  assert.match(output, /linear-axi comments delete --id <id>/);
 });
 
 test("statuses list uses issue status tool", async () => {

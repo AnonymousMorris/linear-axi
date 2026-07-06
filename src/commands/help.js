@@ -57,6 +57,7 @@ export function groupHelp(name, subcommands) {
     comments: [
       "linear-axi comments list --issue LIN-123",
       'linear-axi comments create --issue LIN-123 --body "Ready for review."',
+      "linear-axi comments delete --id <id>",
     ],
     auth: [
       "linear-axi auth login",
@@ -144,6 +145,14 @@ export function commentCreateHelp() {
   return `usage: linear-axi comments create --issue <id> (--body <text> | --body-file <path>)
 examples:
   linear-axi comments create --issue LIN-123 --body "Ready for review."
+`;
+}
+
+export function commentDeleteHelp() {
+  return `usage: linear-axi comments delete --id <id>
+description: Delete a Linear comment by id.
+examples:
+  linear-axi comments delete --id <id>
 `;
 }
 
@@ -409,6 +418,7 @@ const GROUP_FLAG_HELP = {
   comments: [
     "flags{list}:\n  --issue <id> (required), --limit <n> (default 50), --cursor <cursor>, --full",
     "flags{create}:\n  --issue <id> (required), --body <text> or --body-file <path> (required)",
+    "flags{delete}:\n  --id <id> (required)",
   ],
 };
 
