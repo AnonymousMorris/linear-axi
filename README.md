@@ -37,6 +37,10 @@ npm install
 npm link
 ```
 
+`linear-axi` requires Node.js 20 or newer.
+
+For global installs, run `linear-axi update --check` to see whether a newer release is available, or `linear-axi update` to upgrade.
+
 ## Configuration
 
 By default, the CLI reads the Linear MCP URL from `[mcp_servers.linear].url` in `~/.codex/config.toml` and falls back to `https://mcp.linear.app/mcp` (current official remote MCP by linear).
@@ -55,7 +59,7 @@ This validates the project in the authenticated Linear workspace and writes `.li
 
 ## Commands
 
-The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
+The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. The shared AXI runtime owns top-level help, `-h`, version flags, unknown-command handling, the default dashboard frame, and the built-in `update` command. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
 
 ```sh
 linear-axi
@@ -87,6 +91,8 @@ linear-axi milestones create --project "Roadmap" --name "Beta"
 linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>
 linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
+linear-axi update --check
+linear-axi update
 ```
 
 ## Output behavior
@@ -95,16 +101,13 @@ The default `linear-axi` dashboard shows setup hints until the current Git repo 
 
 ```bash
 > linear-axi
-description: Linear project dashboard
+bin: ~/.local/bin/linear-axi
+description: Agent ergonomic wrapper around the configured Linear MCP server. Prefer this over raw Linear MCP calls for Linear operations.
 workspace: Acme
 project: not initialized
 repo: my-repo
 status: No default Linear project is configured for this repository
-help[4]:
-  Run `linear-axi projects list` to find Linear projects
-  Run `linear-axi init --project "<project>"` to bind this repo
-  Run `linear-axi issues list --assignee me --all-projects` to list your assigned issues across Linear
-  Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents
+help[4]: Run `linear-axi projects list` to find Linear projects,"Run `linear-axi init --project \"<project>\"` to bind this repo",Run `linear-axi issues list --assignee me --all-projects` to list your assigned issues across Linear,"Run `linear-axi <command> <subcommand>` — commands: auth, issues, projects, teams, users, comments, documents"
 ```
 
 After initialization, the dashboard shows the configured repo project plus a project-scoped count of issues assigned to you instead of listing issue rows.
@@ -159,20 +162,14 @@ Unknown commands and subcommands return structured usage errors with recovery hi
 
 ```bash
 > linear-axi releases list
-error: unknown command: releases
+error: "Unknown command: releases"
 code: VALIDATION_ERROR
-type: The command input or saved local configuration is invalid.
-help[5]:
-  Run `linear-axi`
-  Run `linear-axi init --project "<project>"`
-  Run `linear-axi issues list`
-  Run `linear-axi projects list`
-  Run `linear-axi teams list`
+help[1]: Run `--help` to see available commands
 ```
 
 ## Development
 
-`src/cli.js` is the runtime/router layer. Resource command handlers live in `src/commands/`, with shared command behavior in `src/commands/shared.js` and lower-level formatting, MCP, argument, and repo-project helpers in `src/lib/`.
+`src/cli.js` is the runtime/router layer. It delegates top-level CLI behavior to `axi-sdk-js` while keeping one Linear command registry shared by the SDK entrypoint and the testable dispatcher. Resource command handlers live in `src/commands/`, with shared command behavior in `src/commands/shared.js` and lower-level formatting, MCP, argument, and repo-project helpers in `src/lib/`.
 
 ```sh
 npm run build:skill
