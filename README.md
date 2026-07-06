@@ -107,6 +107,17 @@ linear-axi update --check
 linear-axi update
 ```
 
+### Hidden GraphQL delete escape hatch
+
+`projects delete` and `documents delete` are intentionally hidden from CLI help, help hints, and the agent skill. They bypass the MCP tool surface and call Linear's GraphQL API directly, so they are meant for test cleanup only.
+
+They require `--dangerously-skip-permissions` and a Linear GraphQL token in `LINEAR_API_KEY` or `LINEAR_AXI_GRAPHQL_TOKEN`. Linear's delete semantics are trash/archive semantics; the resources can be restored in Linear.
+
+```sh
+LINEAR_API_KEY=<token> linear-axi projects delete --id <id> --dangerously-skip-permissions
+LINEAR_API_KEY=<token> linear-axi documents delete --id <id> --dangerously-skip-permissions
+```
+
 ## Output behavior
 
 The default `linear-axi` dashboard shows setup hints until the current Git repo is bound to a Linear project. Use `projects list` to find the project name, then save it with `init`.

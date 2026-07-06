@@ -1786,6 +1786,54 @@ test("documents create returns compact mutation output", async () => {
   assert.doesNotMatch(output, /linear-axi documents view doc1/);
 });
 
+test("documents delete is hidden behind dangerous permissions and calls GraphQL", async () => {
+  let seen;
+  const output = await run(
+    ["documents", "delete", "--id", "doc1", "--dangerously-skip-permissions"],
+    runtime({
+      graphqlClient: {
+        call: async (query, variables) => {
+          seen = { query, variables };
+          return {
+            documentDelete: {
+              success: true,
+              entity: { id: "doc1", title: "Spec", archivedAt: "2026-07-06T12:00:00.000Z" },
+            },
+          };
+        },
+      },
+    }),
+  );
+
+  assert.match(seen.query, /documentDelete\(id: \$id\)/);
+  assert.deepEqual(seen.variables, { id: "doc1" });
+  assert.match(output, /document:/);
+  assert.match(output, /id: doc1/);
+  assert.match(output, /title: Spec/);
+  assert.match(output, /deleted: true/);
+  assert.doesNotMatch(output, /help\[/);
+});
+
+test("documents delete requires dangerous permissions before GraphQL calls", async () => {
+  let called = false;
+  await assert.rejects(
+    () => run(
+      ["documents", "delete", "--id", "doc1"],
+      runtime({
+        graphqlClient: {
+          call: async () => {
+            called = true;
+            return {};
+          },
+        },
+      }),
+    ),
+    /documents delete requires --dangerously-skip-permissions/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("projects create wraps create_project and returns compact output", async () => {
   let seen;
   const output = await run(
@@ -2072,11 +2120,60 @@ test("projects update rejects a missing project from get_project before mutation
   assert.deepEqual(calls, [{ name: "get_project", args: { query: "missing" } }]);
 });
 
+test("projects delete is hidden behind dangerous permissions and calls GraphQL", async () => {
+  let seen;
+  const output = await run(
+    ["projects", "delete", "--id", "p1", "--dangerously-skip-permissions"],
+    runtime({
+      graphqlClient: {
+        call: async (query, variables) => {
+          seen = { query, variables };
+          return {
+            projectDelete: {
+              success: true,
+              entity: { id: "p1", name: "Roadmap", archivedAt: "2026-07-06T12:00:00.000Z" },
+            },
+          };
+        },
+      },
+    }),
+  );
+
+  assert.match(seen.query, /projectDelete\(id: \$id\)/);
+  assert.deepEqual(seen.variables, { id: "p1" });
+  assert.match(output, /project:/);
+  assert.match(output, /id: p1/);
+  assert.match(output, /name: Roadmap/);
+  assert.match(output, /deleted: true/);
+  assert.doesNotMatch(output, /help\[/);
+});
+
+test("projects delete requires dangerous permissions before GraphQL calls", async () => {
+  let called = false;
+  await assert.rejects(
+    () => run(
+      ["projects", "delete", "--id", "p1"],
+      runtime({
+        graphqlClient: {
+          call: async () => {
+            called = true;
+            return {};
+          },
+        },
+      }),
+    ),
+    /projects delete requires --dangerously-skip-permissions/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("resource group help is available before choosing a subcommand", async () => {
   const output = await run(["projects", "--help"], runtime({}));
 
   assert.match(output, /usage: linear-axi projects <subcommand> \[flags\]/);
   assert.match(output, /subcommands\[3\]:\n  list, create, update/);
+  assert.doesNotMatch(output, /delete/);
   assert.match(output, /flags\{list\}:\n  --query <text>, --team <team>, --state <state>, --limit <n> \(default 50\), --fields <a,b,c>, --full/);
   assert.match(output, /flags\{create\}:\n  --name <text> \(required\), --team <team> or --teamId <id> \(required\)/);
   assert.match(output, /flags\{update\}:\n  --id <id> \(required\)/);
@@ -2358,10 +2455,12 @@ async function runMain(args, overrides = {}) {
 function runtime(client) {
   return {
     cwd: client.cwd ?? process.cwd(),
-    env: {},
+    env: client.env ?? {},
     binPath: "/tmp/linear-axi",
     mcpUrl: "https://mcp.linear.app/mcp",
     stdout: client.stdout,
+    fetch: client.fetch,
+    graphqlClient: client.graphqlClient,
     client: { close: async () => {}, ...client },
   };
 }

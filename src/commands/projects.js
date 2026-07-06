@@ -1,6 +1,7 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
 import { collectKnownArgs, rejectIdOnCreate } from "../lib/cli-helpers.js";
+import { callLinearGraphql, requireDangerouslySkipPermissions } from "../lib/graphql.js";
 import { compactProjectMutation } from "../lib/linear-format.js";
 import { callAvailableTool, mutationData } from "../lib/mcp-tools.js";
 import { groupHelp, projectCreateHelp, projectUpdateHelp } from "./help.js";
@@ -22,6 +23,8 @@ export async function projectCommand(args, runtime) {
       return createProjectCommand(rest, runtime);
     case "update":
       return updateProjectCommand(rest, runtime);
+    case "delete":
+      return deleteProjectCommand(rest, runtime);
     default:
       throw usage(`unknown projects command: ${subcommand}`, [
         "Run `linear-axi projects list`",
@@ -60,6 +63,40 @@ async function updateProjectCommand(args, runtime) {
   await ensureProjectExists(toolArgs.id, runtime);
   const result = await callAvailableTool(runtime, ["update_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs));
   return renderProjectMutation(result);
+}
+
+async function deleteProjectCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help", "dangerously-skip-permissions"], example: "projects delete --id <id> --dangerously-skip-permissions" });
+  if (parsed.help) throw usage("projects delete is a hidden test-only command", []);
+  requireDangerouslySkipPermissions(parsed, "projects delete");
+  const id = parsed.id ?? parsed.positionals[0];
+  if (!id) {
+    throw usage("projects delete requires --id", [
+      "Run `linear-axi projects list --query <text>` to find the project id",
+      "Run `linear-axi projects delete --id <id> --dangerously-skip-permissions`",
+    ]);
+  }
+  const data = await callLinearGraphql(runtime, `
+    mutation LinearAxiProjectDelete($id: String!) {
+      projectDelete(id: $id) {
+        success
+        entity {
+          id
+          name
+          archivedAt
+        }
+      }
+    }
+  `, { id });
+  const payload = data.projectDelete;
+  return renderToon({
+    project: {
+      id: payload.entity?.id ?? id,
+      ...(payload.entity?.name ? { name: payload.entity.name } : {}),
+      deleted: payload.success,
+      ...(payload.entity?.archivedAt ? { archivedAt: payload.entity.archivedAt } : {}),
+    },
+  });
 }
 
 function rejectProjectIdOnCreate(subcommand, parsed) {
