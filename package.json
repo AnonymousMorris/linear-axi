@@ -11,7 +11,7 @@
   },
   "files": [
     "bin",
-    "docs/demo.gif",
+    "docs/demo.webm",
     "skills",
     "src",
     "LICENSE",
@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build:skill": "node scripts/build-skill.js",
-    "demo": "PATH=\"$PWD/bin:$PATH\" vhs docs/demo.tape && magick docs/demo.gif -coalesce -transparent-color '#1e1e2e' -background '#1e1e2e' -alpha background -alpha off -layers Optimize docs/demo.tmp.gif && mv docs/demo.tmp.gif docs/demo.gif",
+    "demo": "PATH=\"$PWD/bin:$PATH\" vhs docs/demo.tape",
     "check": "node --check bin/linear-axi && node --check bin/linear-axi.js && node --check src/*.js && node --check src/commands/*.js && node --check src/lib/*.js && node --check scripts/*.js && npm run build:skill -- --check && node --test",
     "prepublishOnly": "npm run check",
     "test": "node --test"

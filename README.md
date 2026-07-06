@@ -4,7 +4,7 @@
 
 The project follows the [AXI](https://axi.md/) pattern: an Agent eXperience. 
 
-![linear-axi terminal demo](docs/demo.gif)
+![terminal demo](docs/demo.gif)
 
 ## Install
 
@@ -31,16 +31,10 @@ That is enough for agents that support skills. The skill teaches the agent to ru
 
 `-g` installs the skill globally. Drop `-g` to install it only for the current project.
 
-To install the skill from a local checkout before the GitHub repository is public or updated, run:
+To install the skill from a local checkout, run:
 
 ```sh
 npx skills add . -g
-```
-
-To verify discovery without installing anything:
-
-```sh
-npx skills add . --skill linear-axi --list
 ```
 
 To install the CLI directly from a checkout:
@@ -58,17 +52,17 @@ For global installs, run `linear-axi update --check` to see whether a newer rele
 
 By default, the CLI reads the Linear MCP URL from `[mcp_servers.linear].url` in `~/.codex/config.toml` and falls back to `https://mcp.linear.app/mcp` (current official remote MCP by linear).
 
-The default remote Linear MCP endpoint uses OAuth. Run `linear-axi auth login`, open the returned URL, and the CLI will capture the localhost callback and save tokens automatically. In a headless environment, run `linear-axi auth login --manual`, open the URL, copy the `code` from the failed localhost redirect, then finish with `linear-axi auth finish --code <code>`. Run `linear-axi auth logout` to remove the saved OAuth state; it is safe to rerun and does not unset bearer-token environment variables. Set `LINEAR_AXI_MCP_URL` to use a different MCP endpoint, or `CODEX_CONFIG` to read the URL from another Codex config file. Set `LINEAR_AXI_MCP_TOKEN` or `LINEAR_MCP_TOKEN` only when your endpoint expects a bearer token. Set `LINEAR_AXI_AUTH_FILE` to store OAuth state somewhere other than `${XDG_CONFIG_HOME:-~/.config}/linear-axi/oauth.json`.
+The default remote Linear MCP endpoint uses OAuth. Run `linear-axi auth login`, open the returned URL, and the CLI will capture the localhost callback and save tokens automatically. 
+
+In a headless environment, run `linear-axi auth login --manual`, open the URL, copy the `code` from the failed localhost redirect, then finish with `linear-axi auth finish --code <code>`. Run `linear-axi auth logout` to remove the saved OAuth state; it is safe to rerun and does not unset bearer-token environment variables. Set `LINEAR_AXI_MCP_URL` to use a different MCP endpoint, or `CODEX_CONFIG` to read the URL from another Codex config file. Set `LINEAR_AXI_MCP_TOKEN` or `LINEAR_MCP_TOKEN` only when your endpoint expects a bearer token. Set `LINEAR_AXI_AUTH_FILE` to store OAuth state somewhere other than `${XDG_CONFIG_HOME:-~/.config}/linear-axi/oauth.json`.
 
 ## Project setup
 
-Run this once from a Git repository to bind the repo to its Linear project:
+We have store a .linear-project file to avoid having every new agent rediscover which linear project our current coding project is for. Run this once from a Git repository to bind the repo to its Linear project:
 
 ```sh
 linear-axi init --project "Roadmap"
 ```
-
-This validates the project in the authenticated Linear workspace and writes `.linear-project` at the Git root as JSON, for example `{ "workspace": "Acme", "project": "Roadmap" }`. The workspace is discovered from Linear; you do not pass it as an argument. Existing files with only `{ "project": "Roadmap" }` or a bare project name are still readable. After that, project-scoped commands such as `linear-axi`, `linear-axi issues list`, `linear-axi issues create ...`, `linear-axi documents list`, `linear-axi documents create ...`, and `linear-axi milestones list` use that project automatically. Pass `--project <project>` on a project-scoped command to override the repo default once. Use `--all-projects` on issue and document list commands when you intentionally want a workspace-wide list. Re-run `linear-axi init --project "<project>" --force` to replace the saved value.
 
 ## Commands
 
@@ -135,8 +129,6 @@ issues: 3 assigned to me in project
 
 If the saved default project is not found in the authenticated workspace, the dashboard reports the invalid default and suggests searching the current workspace or replacing `.linear-project`. Project-scoped commands fail with the same `VALIDATION_ERROR` before sending the stale project to Linear.
 
-List commands use a compact schema by default. Empty lists render as `items: []`, counts render as `0 returned` or `1 returned (more available)`, and general resource lists include field-selection hints. Project and issue lists put status first, group matching statuses together, prioritize In Progress/Started before Planned/Todo and Backlog, and keep ids last. Comments lists suggest creating a comment and add a `--full` hint only when body previews are truncated; statuses lists suggest `--full`. Issues, projects, teams, users, documents, labels, comments, and statuses include cursor hints when more results are available. The continuation hint preserves active filters, selected fields, limits, and shell quoting. Add `--fields id,name,status` to choose fields, `--cursor <cursor>` to resume a page, or `--full` when you need the complete MCP response. Hints are reserved for discovery, pagination, truncation, required follow-up steps such as OAuth, and error recovery.
-
 ```bash
 > linear-axi projects list --query roadmap --limit 25
 count: 1 returned (more available)
@@ -148,7 +140,7 @@ help[2]:
   Run `linear-axi projects list --limit 25 --query roadmap --cursor next-page` to continue
 ```
 
-Detail commands such as `issues view <id>` and `documents view <id>` return one item. Compact detail views include long-text previews and suggest `--full` only when content is truncated; `issues view all` is rejected because detail views require one issue id. Missing detail targets and failed pre-mutation existence checks return structured `NOT_FOUND` errors with search or create hints. Issue, project, document, and comment mutations return compact success objects with the id, title/name, URL, and no success hints except the conditional `comments list --full` escape hatch when a created comment body preview is truncated. Use `create` for new objects and `update` for edits. Other operational failures include an `OPERATION_ERROR` code. Updates verify the target exists before mutating, and comment creates verify the issue exists before adding the comment. Issue and project creates check for existing same-name items and return conflict hints when a likely duplicate already exists. Text bodies can be passed directly or through `--description-file`, `--body-file`, and `--content-file`.
+Detail commands such as `issues view <id>` and `documents view <id>` return one item. 
 
 ```bash
 > linear-axi issues create --title "Fix auth" --team ENG --project Roadmap
@@ -193,4 +185,4 @@ npm run demo
 
 The committed `skills/linear-axi/SKILL.md` is generated by `npm run build:skill`; `npm run check` fails if it drifts from the shared skill source. The npm package includes `skills/linear-axi/`, so published releases ship the same installable Agent Skill documented in Install.
 
-`npm run demo` renders `docs/demo.gif` from `docs/demo.tape` using [VHS](https://github.com/charmbracelet/vhs), then makes the GIF background opaque with ImageMagick. The tape uses the local executable path, so it can be regenerated from a checkout without installing `linear-axi` globally.
+`npm run demo` renders `docs/demo.webm` from `docs/demo.tape` using [VHS](https://github.com/charmbracelet/vhs). WebM keeps the demo high resolution while using much less memory than GIF during generation. The tape uses the local executable path, so it can be regenerated from a checkout without installing `linear-axi` globally.
