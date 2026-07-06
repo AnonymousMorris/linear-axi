@@ -2,7 +2,7 @@ import { basename, resolve } from "node:path";
 import { AxiError, usage } from "../args.js";
 import { formatCommandArg } from "../lib/cli-helpers.js";
 import { sanitizeDocument } from "../lib/linear-format.js";
-import { asArray, callAvailableTool, extractData, isUnknownToolError } from "../lib/mcp-tools.js";
+import { asArray, callAvailableTool, extractData, hasTool, isUnknownToolError } from "../lib/mcp-tools.js";
 import { findGitRoot } from "../lib/repo-project.js";
 
 export const DEFAULT_LIMIT = 50;
@@ -111,8 +111,15 @@ export async function ensureIssueDoesNotExist(title, team, runtime) {
 }
 
 export async function getProjectDetail(id, runtime) {
+  if (await hasTool(runtime, "get_project")) {
+    const detailed = await runtime.client.callTool("get_project", { query: id });
+    const data = extractData(detailed);
+    if (!isEmptyObject(data) && !isBlankProjectDetail(data) && projectMatches(data, id)) return data;
+    if (!(await hasTool(runtime, "list_projects"))) return null;
+  }
+
   const listed = await runtime.client.callTool("list_projects", { query: id, limit: 10 });
-  const matches = asArray(extractData(listed)).filter((project) => project.id === id || project.slugId === id || isSameText(project.name, id));
+  const matches = asArray(extractData(listed)).filter((project) => projectMatches(project, id));
   return matches[0] ?? null;
 }
 
@@ -249,6 +256,11 @@ function isSameText(left, right) {
   return String(left ?? "").trim().toLocaleLowerCase() === String(right ?? "").trim().toLocaleLowerCase();
 }
 
+function projectMatches(project, value) {
+  if (!project || typeof project !== "object" || Array.isArray(project)) return false;
+  return project.id === value || project.slugId === value || isSameText(project.name, value);
+}
+
 function isEmptyObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
 }
@@ -259,6 +271,10 @@ function isBlankIssueDetail(value) {
 
 function isBlankDocumentDetail(value) {
   return isBlankDetail(value, ["id", "title", "name"]);
+}
+
+function isBlankProjectDetail(value) {
+  return isBlankDetail(value, ["id", "slugId", "name"]);
 }
 
 function isBlankDetail(value, identityFields) {
