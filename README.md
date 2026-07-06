@@ -37,6 +37,8 @@ npm install
 npm link
 ```
 
+`linear-axi` requires Node.js 20 or newer.
+
 For global installs, run `linear-axi update --check` to see whether a newer release is available, or `linear-axi update` to upgrade.
 
 ## Configuration
@@ -57,7 +59,7 @@ This validates the project in the authenticated Linear workspace and writes `.li
 
 ## Commands
 
-The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
+The CLI is organized as `linear-axi <resource> <action>`. Internally, each action forwards to the matching Linear MCP tool, then formats the result for agents. The shared AXI runtime owns top-level help, `-h`, version flags, unknown-command handling, the default dashboard frame, and the built-in `update` command. Run `linear-axi --help` for the top-level command list, `linear-axi <resource> --help` for grouped subcommand flags, or `linear-axi <resource> <action> --help` for the focused flag reference.
 
 ```sh
 linear-axi
@@ -167,7 +169,7 @@ help[1]: Run `--help` to see available commands
 
 ## Development
 
-`src/cli.js` is the runtime/router layer. Resource command handlers live in `src/commands/`, with shared command behavior in `src/commands/shared.js` and lower-level formatting, MCP, argument, and repo-project helpers in `src/lib/`.
+`src/cli.js` is the runtime/router layer. It delegates top-level CLI behavior to `axi-sdk-js` while keeping one Linear command registry shared by the SDK entrypoint and the testable dispatcher. Resource command handlers live in `src/commands/`, with shared command behavior in `src/commands/shared.js` and lower-level formatting, MCP, argument, and repo-project helpers in `src/lib/`.
 
 ```sh
 npm run build:skill
