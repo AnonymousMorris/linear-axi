@@ -728,6 +728,35 @@ test("repo project validation accepts project uuids with get_project", async () 
   assert.deepEqual(seen, { name: "list_issues", args: { project: projectId, limit: 50 } });
 });
 
+test("repo project validation falls back to list_projects after get_project misses", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), JSON.stringify({ project: "roadmap-slug" }), "utf8");
+  const calls = [];
+
+  await run(
+    ["issues", "list"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "get_project" }, { name: "list_projects" }, { name: "list_issues" }],
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        if (name === "get_project") return { structuredContent: {} };
+        if (name === "list_projects") {
+          return { structuredContent: { projects: [{ slugId: "roadmap-slug", name: "Roadmap" }] } };
+        }
+        return { structuredContent: { issues: [] } };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_project", args: { query: "roadmap-slug" } },
+    { name: "list_projects", args: { query: "roadmap-slug", limit: 10 } },
+    { name: "list_issues", args: { project: "roadmap-slug", limit: 50 } },
+  ]);
+});
+
 test("invalid repo project help quotes saved project tokens", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));
@@ -1664,6 +1693,31 @@ test("projects update validates with get_project before mutation", async () => {
   assert.deepEqual(calls, [
     { name: "get_project", args: { query: "5bf051dd-8c53-4fd9-a606-58dbeae18ec4" } },
     { name: "save_project", args: { id: "5bf051dd-8c53-4fd9-a606-58dbeae18ec4", summary: "Plan" } },
+  ]);
+});
+
+test("projects update falls back to list_projects after get_project mismatch", async () => {
+  const calls = [];
+
+  await run(
+    ["projects", "update", "--id", "roadmap-slug", "--summary", "Plan"],
+    runtime({
+      listTools: async () => [{ name: "get_project" }, { name: "list_projects" }, { name: "save_project" }],
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        if (name === "get_project") return { structuredContent: { id: "other", name: "Other" } };
+        if (name === "list_projects") {
+          return { structuredContent: { projects: [{ slugId: "roadmap-slug", name: "Roadmap" }] } };
+        }
+        return { structuredContent: { slugId: "roadmap-slug", name: "Roadmap" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_project", args: { query: "roadmap-slug" } },
+    { name: "list_projects", args: { query: "roadmap-slug", limit: 10 } },
+    { name: "save_project", args: { id: "roadmap-slug", summary: "Plan" } },
   ]);
 });
 

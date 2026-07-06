@@ -114,12 +114,12 @@ export async function getProjectDetail(id, runtime) {
   if (await hasTool(runtime, "get_project")) {
     const detailed = await runtime.client.callTool("get_project", { query: id });
     const data = extractData(detailed);
-    if (isEmptyObject(data) || isBlankProjectDetail(data)) return null;
-    return data;
+    if (!isEmptyObject(data) && !isBlankProjectDetail(data) && projectMatches(data, id)) return data;
+    if (!(await hasTool(runtime, "list_projects"))) return null;
   }
 
   const listed = await runtime.client.callTool("list_projects", { query: id, limit: 10 });
-  const matches = asArray(extractData(listed)).filter((project) => project.id === id || project.slugId === id || isSameText(project.name, id));
+  const matches = asArray(extractData(listed)).filter((project) => projectMatches(project, id));
   return matches[0] ?? null;
 }
 
@@ -254,6 +254,11 @@ export function pluralName(name) {
 
 function isSameText(left, right) {
   return String(left ?? "").trim().toLocaleLowerCase() === String(right ?? "").trim().toLocaleLowerCase();
+}
+
+function projectMatches(project, value) {
+  if (!project || typeof project !== "object" || Array.isArray(project)) return false;
+  return project.id === value || project.slugId === value || isSameText(project.name, value);
 }
 
 function isEmptyObject(value) {

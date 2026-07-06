@@ -64,7 +64,8 @@ async function getValidatingProject(project, runtime) {
   if (await hasTool(runtime, "get_project")) {
     const detailed = await runtime.client.callTool("get_project", { query: project });
     const data = extractData(detailed);
-    return projectMatches(data, project) ? data : null;
+    if (projectMatches(data, project)) return data;
+    if (!(await hasTool(runtime, "list_projects"))) return null;
   }
 
   const listed = await runtime.client.callTool("list_projects", { query: project, limit: 10 });
@@ -137,6 +138,7 @@ function invalidRepoProject(project, command, workspace) {
 }
 
 function projectMatches(project, value) {
+  if (!project || typeof project !== "object" || Array.isArray(project)) return false;
   const expected = normalizeProject(value);
   return [project.id, project.slugId, project.name].some((candidate) => normalizeProject(candidate) === expected);
 }
