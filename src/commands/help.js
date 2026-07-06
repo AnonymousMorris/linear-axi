@@ -41,6 +41,7 @@ export function groupHelp(name, subcommands) {
       "linear-axi issues view LIN-123",
       'linear-axi issues create --title "Fix auth" --team ENG',
       "linear-axi issues update --id LIN-123 --state Done",
+      "linear-axi issues delete --id LIN-123",
     ],
     projects: [
       "linear-axi projects list --limit 25",
@@ -70,6 +71,7 @@ export function groupHelp(name, subcommands) {
       'linear-axi milestones view --project "Roadmap" "Beta"',
       'linear-axi milestones create --project "Roadmap" --name "Beta"',
       'linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>',
+      'linear-axi milestones delete --project "Roadmap" --id <id>',
     ],
     cycles: ["linear-axi cycles list --team ENG --type current"],
     statuses: ["linear-axi statuses list --team ENG"],
@@ -285,6 +287,17 @@ examples:
 `;
 }
 
+export function milestoneDeleteHelp() {
+  return `usage: linear-axi milestones delete --project <project> --id <id>
+description: Delete a Linear milestone by id.
+flags:
+  --id <id>
+  --project <project>  overrides the repo default project
+examples:
+  linear-axi milestones delete --project "Roadmap" --id <id>
+`;
+}
+
 export function cycleListHelp() {
   return `usage: linear-axi cycles list --team <team> [--type current|previous|next|all] [--full]
 flags:
@@ -371,6 +384,14 @@ examples:
 `;
 }
 
+export function issueDeleteHelp() {
+  return `usage: linear-axi issues delete --id <id>
+description: Delete a Linear issue by id.
+examples:
+  linear-axi issues delete --id LIN-123
+`;
+}
+
 export function authLoginHelp() {
   return `usage: linear-axi auth login [--manual] [--timeout <ms>]
 flags:
@@ -403,6 +424,7 @@ const GROUP_FLAG_HELP = {
     "flags{view}:\n  --full (show complete description without truncation)",
     "flags{create}:\n  --title <text> (required), --team <team> (required), --description <markdown> or --description-file <path>, --state <state>, --assignee <user>, --project <project>, --label <label>",
     "flags{update}:\n  --id <id> (required), --title <text>, --description <markdown> or --description-file <path>, --state <state>, --assignee <user>, --project <project>, --label <label>",
+    "flags{delete}:\n  --id <id> (required)",
   ],
   projects: [
     "flags{list}:\n  --query <text>, --team <team>, --state <state>, --limit <n> (default 50), --fields <a,b,c>, --full",
@@ -419,6 +441,13 @@ const GROUP_FLAG_HELP = {
     "flags{list}:\n  --issue <id> (required), --limit <n> (default 50), --cursor <cursor>, --full",
     "flags{create}:\n  --issue <id> (required), --body <text> or --body-file <path> (required)",
     "flags{delete}:\n  --id <id> (required)",
+  ],
+  milestones: [
+    "flags{list}:\n  --project <project> (required), --full",
+    "flags{view}:\n  --project <project> (required), <milestone>",
+    "flags{create}:\n  --name <text> (required), --project <project>",
+    "flags{update}:\n  --id <id> (required), --project <project> (required), --targetDate <yyyy-mm-dd>",
+    "flags{delete}:\n  --id <id> (required), --project <project>",
   ],
 };
 

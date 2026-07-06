@@ -1,12 +1,13 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { collectKnownArgs, rejectIdOnCreate } from "../lib/cli-helpers.js";
+import { collectKnownArgs, formatCommandArg, rejectIdOnCreate } from "../lib/cli-helpers.js";
 import { compactRows } from "../lib/linear-format.js";
-import { extractData, mutationData } from "../lib/mcp-tools.js";
+import { callAvailableTool, extractData, mutationData } from "../lib/mcp-tools.js";
 import { applyRepoProjectDefault } from "../lib/repo-project.js";
 import {
   groupHelp,
   milestoneCreateHelp,
+  milestoneDeleteHelp,
   milestoneListHelp,
   milestoneUpdateHelp,
   milestoneViewHelp,
@@ -17,7 +18,7 @@ import {
 
 export async function milestoneCommand(args, runtime) {
   const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("milestones", ["list", "view", "create", "update"]);
+  if (subcommand === "--help" || subcommand === "-h") return groupHelp("milestones", ["list", "view", "create", "update", "delete"]);
 
   switch (subcommand ?? "list") {
     case "list":
@@ -28,8 +29,13 @@ export async function milestoneCommand(args, runtime) {
       return createMilestoneCommand(rest, runtime);
     case "update":
       return updateMilestoneCommand(rest, runtime);
+    case "delete":
+      return deleteMilestoneCommand(rest, runtime);
     default:
-      throw usage(`unknown milestones command: ${subcommand}`, ["Run `linear-axi milestones list --project <project>`"]);
+      throw usage(`unknown milestones command: ${subcommand}`, [
+        "Run `linear-axi milestones list --project <project>`",
+        "Run `linear-axi milestones delete --project <project> --id <id>`",
+      ]);
   }
 }
 
@@ -75,6 +81,36 @@ async function updateMilestoneCommand(args, runtime) {
   if (!toolArgs.id) throw usage("updating a milestone requires --id", ['Run `linear-axi milestones update --project "<project>" --id <id>`']);
   await ensureMilestoneExists(toolArgs.project, toolArgs.id, runtime);
   return saveMilestone(toolArgs, runtime);
+}
+
+async function deleteMilestoneCommand(args, runtime) {
+  const parsed = parseFlags(args, { boolean: ["help"], example: 'milestones delete --project "Roadmap" --id <id>' });
+  if (parsed.help) return milestoneDeleteHelp();
+  const toolArgs = collectKnownArgs(parsed, ["id", "project"]);
+  toolArgs.id ??= parsed.positionals[0];
+  await applyRepoProjectDefault(toolArgs, runtime, {
+    command: "linear-axi milestones delete",
+    requireProject: true,
+  });
+  if (!toolArgs.project) throw usage("--project is required", ['Run `linear-axi milestones delete --project "<project>" --id <id>`']);
+  if (!toolArgs.id) {
+    throw usage("milestones delete requires --id", [
+      `Run \`linear-axi milestones list --project ${formatCommandArg(toolArgs.project)}\` to find the milestone id`,
+      'Run `linear-axi milestones delete --project "<project>" --id <id>`',
+    ]);
+  }
+  await ensureMilestoneExists(toolArgs.project, toolArgs.id, runtime);
+  const result = await callAvailableTool(runtime, ["delete_milestone"], toolArgs);
+  const milestone = mutationData(result, [
+    `Run \`linear-axi milestones list --project ${formatCommandArg(toolArgs.project)}\` to find the milestone id`,
+    'Run `linear-axi milestones delete --project "<project>" --id <id>`',
+  ]);
+  return renderToon({
+    milestone: {
+      id: milestone.id ?? toolArgs.id,
+      deleted: milestone.deleted ?? milestone.success ?? true,
+    },
+  });
 }
 
 function rejectMilestoneIdOnCreate(subcommand, parsed) {

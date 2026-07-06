@@ -81,6 +81,7 @@ linear-axi issues list --fields id,title,state,assignee
 linear-axi issues view LIN-123 --full
 linear-axi issues create --title "Fix auth" --team ENG --project "Roadmap"
 linear-axi issues update --id LIN-123 --state Done
+linear-axi issues delete --id LIN-123
 linear-axi projects list --query roadmap
 linear-axi projects create --name "Roadmap" --team ENG
 linear-axi projects update --id <id> --summary "Updated scope"
@@ -97,6 +98,7 @@ linear-axi milestones list --project "Roadmap"
 linear-axi milestones view --project "Roadmap" "Beta"
 linear-axi milestones create --project "Roadmap" --name "Beta"
 linear-axi milestones update --project "Roadmap" --id <id> --targetDate <yyyy-mm-dd>
+linear-axi milestones delete --project "Roadmap" --id <id>
 linear-axi cycles list --team ENG --type current
 linear-axi statuses list --team ENG
 linear-axi update --check

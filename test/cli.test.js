@@ -817,6 +817,59 @@ test("repo project default applies to issue creates but not updates", async () =
   assert.doesNotMatch(updateOutput, /help\[/);
 });
 
+test("issues delete calls delete_issue and returns compact confirmation", async () => {
+  let seen;
+  const output = await run(
+    ["issues", "delete", "--id", "LIN-1"],
+    runtime({
+      listTools: async () => [{ name: "delete_issue" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { identifier: "LIN-1", deleted: true, extra: "hidden" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "delete_issue", args: { id: "LIN-1" } });
+  assert.match(output, /issue:/);
+  assert.match(output, /id: LIN-1/);
+  assert.match(output, /deleted: true/);
+  assert.doesNotMatch(output, /extra/);
+  assert.doesNotMatch(output, /help\[/);
+});
+
+test("issues delete accepts a positional id and requires one before MCP calls", async () => {
+  let seen;
+  await run(
+    ["issues", "delete", "LIN-1"],
+    runtime({
+      listTools: async () => [{ name: "delete_issue" }],
+      callTool: async (name, args) => {
+        seen = { name, args };
+        return { structuredContent: { success: true } };
+      },
+    }),
+  );
+
+  assert.deepEqual(seen, { name: "delete_issue", args: { id: "LIN-1" } });
+
+  let called = false;
+  await assert.rejects(
+    () => run(
+      ["issues", "delete"],
+      runtime({
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /issues delete requires --id/,
+  );
+
+  assert.equal(called, false);
+});
+
 test("issue create requires explicit or initialized project", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));
@@ -931,6 +984,56 @@ test("repo project default applies to milestone creates and updates use explicit
   assert.deepEqual(seen, { name: "save_milestone", args: { id: "m1", project: "Roadmap", targetDate: "2026-09-01" } });
 });
 
+test("milestones delete calls delete_milestone with project scope and returns compact confirmation", async () => {
+  const calls = [];
+  const output = await run(
+    ["milestones", "delete", "--project", "Roadmap", "--id", "m1"],
+    runtime({
+      listTools: async () => [{ name: "delete_milestone" }],
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        if (name === "get_milestone") return { structuredContent: { id: "m1", name: "Beta" } };
+        return { structuredContent: { id: "m1", deleted: true, extra: "hidden" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_milestone", args: { project: "Roadmap", query: "m1" } },
+    { name: "delete_milestone", args: { id: "m1", project: "Roadmap" } },
+  ]);
+  assert.match(output, /milestone:/);
+  assert.match(output, /id: m1/);
+  assert.match(output, /deleted: true/);
+  assert.doesNotMatch(output, /extra/);
+  assert.doesNotMatch(output, /help\[/);
+});
+
+test("milestones delete accepts positional ids and repo project defaults", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  await writeFile(join(repo, ".linear-project"), `${JSON.stringify({ project: "Roadmap" })}\n`, "utf8");
+  const calls = [];
+
+  await run(
+    ["milestones", "delete", "m1"],
+    runtime({
+      cwd: repo,
+      listTools: async () => [{ name: "delete_milestone" }],
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        if (name === "get_milestone") return { structuredContent: { id: "m1", name: "Beta" } };
+        return { structuredContent: { success: true } };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_milestone", args: { project: "Roadmap", query: "m1" } },
+    { name: "delete_milestone", args: { id: "m1", project: "Roadmap" } },
+  ]);
+});
+
 test("milestone list and create require explicit or initialized project", async () => {
   const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
   await mkdir(join(repo, ".git"));
@@ -962,6 +1065,42 @@ test("milestone list and create require explicit or initialized project", async 
       }),
     ),
     /No default Linear project is configured for this repository/,
+  );
+
+  assert.equal(called, false);
+});
+
+test("milestones delete requires project scope and id before delete calls", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "linear-axi-repo-"));
+  await mkdir(join(repo, ".git"));
+  let called = false;
+
+  await assert.rejects(
+    () => run(
+      ["milestones", "delete", "--id", "m1"],
+      runtime({
+        cwd: repo,
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /No default Linear project is configured for this repository/,
+  );
+
+  await assert.rejects(
+    () => run(
+      ["milestones", "delete", "--project", "Roadmap"],
+      runtime({
+        cwd: repo,
+        callTool: async () => {
+          called = true;
+          return {};
+        },
+      }),
+    ),
+    /milestones delete requires --id/,
   );
 
   assert.equal(called, false);
@@ -1946,11 +2085,14 @@ test("resource group help is available before choosing a subcommand", async () =
 test("issue group help summarizes list view create and update flags", async () => {
   const output = await run(["issues", "--help"], runtime({}));
 
+  assert.match(output, /subcommands\[5\]:\n  list, view, create, update, delete/);
   assert.match(output, /flags\{list\}:/);
   assert.match(output, /--assignee <user>.*--fields <a,b,c>.*--full/);
   assert.match(output, /flags\{view\}:\n  --full \(show complete description without truncation\)/);
   assert.match(output, /flags\{create\}:\n  --title <text> \(required\), --team <team> \(required\)/);
   assert.match(output, /flags\{update\}:\n  --id <id> \(required\)/);
+  assert.match(output, /flags\{delete\}:\n  --id <id> \(required\)/);
+  assert.match(output, /linear-axi issues delete --id LIN-123/);
 });
 
 test("comment group help summarizes list create and delete flags", async () => {
@@ -1961,6 +2103,18 @@ test("comment group help summarizes list create and delete flags", async () => {
   assert.match(output, /flags\{create\}:/);
   assert.match(output, /flags\{delete\}:\n  --id <id> \(required\)/);
   assert.match(output, /linear-axi comments delete --id <id>/);
+});
+
+test("milestone group help summarizes list view create update and delete flags", async () => {
+  const output = await run(["milestones", "--help"], runtime({}));
+
+  assert.match(output, /subcommands\[5\]:\n  list, view, create, update, delete/);
+  assert.match(output, /flags\{list\}:/);
+  assert.match(output, /flags\{view\}:/);
+  assert.match(output, /flags\{create\}:/);
+  assert.match(output, /flags\{update\}:/);
+  assert.match(output, /flags\{delete\}:\n  --id <id> \(required\), --project <project>/);
+  assert.match(output, /linear-axi milestones delete --project "Roadmap" --id <id>/);
 });
 
 test("statuses list uses issue status tool", async () => {
