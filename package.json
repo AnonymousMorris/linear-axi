@@ -3,27 +3,47 @@
   "version": "0.1.0",
   "description": "AXI wrapper for the Linear MCP server",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "linear-axi": "bin/linear-axi"
   },
   "files": [
     "bin",
-    "docs",
+    "docs/demo.gif",
     "skills",
     "src",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {
     "build:skill": "node scripts/build-skill.js",
     "demo": "PATH=\"$PWD/bin:$PATH\" vhs docs/demo.tape && magick docs/demo.gif -coalesce -transparent-color '#1e1e2e' -background '#1e1e2e' -alpha background -alpha off -layers Optimize docs/demo.tmp.gif && mv docs/demo.tmp.gif docs/demo.gif",
     "check": "node --check bin/linear-axi && node --check bin/linear-axi.js && node --check src/*.js && node --check src/commands/*.js && node --check src/lib/*.js && node --check scripts/*.js && npm run build:skill -- --check && node --test",
+    "prepublishOnly": "npm run check",
     "test": "node --test"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "linear",
+    "mcp",
+    "cli",
+    "axi",
+    "agent",
+    "agent-skills"
+  ],
+  "author": "AnonymousMorris",
   "license": "MIT",
-  "engines": {
-    "node": ">=20"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnonymousMorris/linear-axi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AnonymousMorris/linear-axi/issues"
+  },
+  "homepage": "https://github.com/AnonymousMorris/linear-axi#readme",
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

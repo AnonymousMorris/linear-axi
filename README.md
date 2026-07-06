@@ -8,7 +8,20 @@ The project follows the [AXI](https://axi.md/) pattern: an Agent eXperience.
 
 ## Install
 
-Install the linear-axi skill in the [Agent Skills](https://agentskills.io) format with the [Vercel skill installer](https://github.com/vercel-labs/skills):
+Run the CLI without installing it globally:
+
+```sh
+npx -y linear-axi --help
+```
+
+Or install it as a global command:
+
+```sh
+npm install -g linear-axi
+linear-axi --help
+```
+
+Agents that support [Agent Skills](https://agentskills.io) can also install the linear-axi skill with the [Vercel skill installer](https://github.com/vercel-labs/skills):
 
 ```sh
 npx skills add AnonymousMorris/linear-axi -g
