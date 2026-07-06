@@ -47,13 +47,13 @@ linear-axi uses the configured Linear MCP server. The default remote endpoint us
 
 ## When to use
 
-Use linear-axi whenever a task touches Linear: listing, viewing, creating, or updating issues; browsing or editing projects and documents; creating or listing comments; checking teams, users, labels, cycles, milestones, or statuses; or binding the current repo to a default Linear project.
+Use linear-axi whenever a task touches Linear: listing, viewing, creating, or updating issues; browsing or editing projects and documents; creating, listing, or deleting comments; checking teams, users, labels, cycles, milestones, or statuses; or binding the current repo to a default Linear project.
 
 ## Workflow
 
 1. Run \`npx -y linear-axi\` with no arguments for a dashboard of the current repo. Uninitialized repos show setup hints instead of workspace-wide issue counts.
 2. List Linear projects with \`npx -y linear-axi projects list\`, then bind a repository with \`npx -y linear-axi init --project "<project>"\`; this accepts a project id, name, or slug, validates the project, and stores discovered workspace metadata in \`.linear-project\`.
-3. Drill in command-first: \`issues list\`, \`issues view <id>\`, \`projects list\`, \`documents view <id>\`, \`comments list --issue <id>\`, and so on.
+3. Drill in command-first: \`issues list\`, \`issues view <id>\`, \`projects list\`, \`documents view <id>\`, \`comments list --issue <id>\`, \`comments delete --id <id>\`, and so on.
 4. Add \`--fields\` for columns, \`--cursor\` for pagination, and \`--full\` only when complete content is needed.
 5. Linear operation responses include contextual next-step hints under \`help:\` when recovery or follow-up is useful - follow them.
 
