@@ -22,6 +22,8 @@ export const LIST_TOOL_ALIASES = {
   label: ["list_issue_labels"],
 };
 
+export const PROJECT_SCOPED_LIST_ALIASES = ["issues", "documents"];
+
 export const LIST_CONTINUATION_FLAGS = [
   "assignee",
   "createdAt",

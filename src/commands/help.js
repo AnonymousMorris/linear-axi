@@ -1,5 +1,5 @@
 import { fieldHint } from "../lib/linear-format.js";
-import { DEFAULT_LIMIT } from "./shared.js";
+import { DEFAULT_LIMIT, PROJECT_SCOPED_LIST_ALIASES } from "./shared.js";
 
 export function topHelp() {
   return `usage: linear-axi [command] [args] [flags]
@@ -83,12 +83,12 @@ ${(examples[name] ?? [`linear-axi ${name} list`]).map((example) => `  ${example}
 }
 
 export function listAliasHelp(alias) {
-  const projectScopedList = ["issues", "documents"].includes(alias);
-  const projectScopeHelp = ["issues", "documents"].includes(alias)
+  const projectScopedList = PROJECT_SCOPED_LIST_ALIASES.includes(alias);
+  const projectScopeHelp = projectScopedList
     ? `  --all-projects
 `
     : "";
-  const projectScopeNote = ["issues", "documents"].includes(alias)
+  const projectScopeNote = projectScopedList
     ? `notes:
   issues and documents require a valid repo default project from .linear-project, --project, or --all-projects.
 `

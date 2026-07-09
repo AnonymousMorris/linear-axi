@@ -1,21 +1,20 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { collectKnownArgs, continuationCommand, formatCommandArg } from "../lib/cli-helpers.js";
+import { collectKnownArgs, continuationCommand, dispatchCommandGroup, formatCommandArg } from "../lib/cli-helpers.js";
 import { compactRows, paginationInfo } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData } from "../lib/mcp-tools.js";
 import { groupHelp, statusListHelp } from "./help.js";
 import { STATUS_CONTINUATION_FLAGS } from "./shared.js";
 
 export async function statusCommand(args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("statuses", ["list"]);
-
-  switch (subcommand ?? "list") {
-    case "list":
-      return listStatusesCommand(rest, runtime);
-    default:
-      throw usage(`unknown statuses command: ${subcommand}`, ["Run `linear-axi statuses list --team <team>`"]);
-  }
+  return dispatchCommandGroup(args, {
+    name: "statuses",
+    help: () => groupHelp("statuses", ["list"]),
+    handlers: {
+      list: (rest) => listStatusesCommand(rest, runtime),
+    },
+    unknownHelp: ["Run `linear-axi statuses list --team <team>`"],
+  });
 }
 
 async function listStatusesCommand(args, runtime) {

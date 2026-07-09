@@ -1,6 +1,6 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { collectKnownArgs, formatCommandArg, readTextFlag, rejectIdOnCreate } from "../lib/cli-helpers.js";
+import { collectKnownArgs, dispatchCommandGroup, formatCommandArg, readTextFlag, rejectIdOnCreate } from "../lib/cli-helpers.js";
 import { compactDocumentDetail, compactDocumentMutation } from "../lib/linear-format.js";
 import { callAvailableTool, mutationData } from "../lib/mcp-tools.js";
 import { applyRepoProjectDefault } from "../lib/repo-project.js";
@@ -17,22 +17,25 @@ import {
   notFound,
 } from "./shared.js";
 
-export async function documentCommand(args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("documents", ["list", "view", "create", "update"]);
+const DOCUMENT_MUTATION_FIELDS = ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"];
+const DOCUMENT_CREATE_HELP = ['Run `linear-axi documents create --title "Spec" --team "<team>"`'];
+const DOCUMENT_UPDATE_HELP = [
+  'Run `linear-axi documents update --id <id> --content "Updated"`',
+  "Run `linear-axi documents list --query <text>` to find the document id",
+];
 
-  switch (subcommand ?? "list") {
-    case "list":
-      return aliasListCommand("documents", rest, runtime);
-    case "view":
-      return viewDocumentCommand(rest, runtime);
-    case "create":
-      return createDocumentCommand(rest, runtime);
-    case "update":
-      return updateDocumentCommand(rest, runtime);
-    default:
-      throw usage(`unknown documents command: ${subcommand}`, ["Run `linear-axi documents list`", "Run `linear-axi documents view <id>`", "Run `linear-axi documents create --title \"Spec\" --team ENG`"]);
-  }
+export async function documentCommand(args, runtime) {
+  return dispatchCommandGroup(args, {
+    name: "documents",
+    help: () => groupHelp("documents", ["list", "view", "create", "update"]),
+    handlers: {
+      list: (rest) => aliasListCommand("documents", rest, runtime),
+      view: (rest) => viewDocumentCommand(rest, runtime),
+      create: (rest) => createDocumentCommand(rest, runtime),
+      update: (rest) => updateDocumentCommand(rest, runtime),
+    },
+    unknownHelp: ["Run `linear-axi documents list`", "Run `linear-axi documents view <id>`", "Run `linear-axi documents create --title \"Spec\" --team ENG`"],
+  });
 }
 
 async function viewDocumentCommand(args, runtime) {
@@ -58,11 +61,8 @@ async function createDocumentCommand(args, runtime) {
   if (parsed.help) return documentCreateHelp();
   rejectDocumentIdOnCreate("create", parsed);
   const toolArgs = await documentToolArgs(parsed, runtime, { applyDefaultProject: true });
-  if (!toolArgs.title) {
-    throw usage("creating a document requires --title", ['Run `linear-axi documents create --title "Spec" --team "<team>"`']);
-  }
-  const result = await callAvailableTool(runtime, ["create_document", "save_document"], toolArgs);
-  return renderDocumentMutation(result);
+  requireDocumentTitle(toolArgs);
+  return saveDocument(toolArgs, runtime, ["create_document", "save_document"]);
 }
 
 async function updateDocumentCommand(args, runtime) {
@@ -70,15 +70,9 @@ async function updateDocumentCommand(args, runtime) {
   if (parsed.help) return documentUpdateHelp();
   rejectDocumentIdOnCreate("update", parsed);
   const toolArgs = await documentToolArgs(parsed, runtime);
-  if (!toolArgs.id) {
-    throw usage("updating a document requires --id", [
-      'Run `linear-axi documents update --id <id> --content "Updated"`',
-      "Run `linear-axi documents list --query <text>` to find the document id",
-    ]);
-  }
+  requireDocumentId(toolArgs);
   await ensureDocumentExists(toolArgs.id, runtime);
-  const result = await callAvailableTool(runtime, ["update_document", "save_document"], toolArgs);
-  return renderDocumentMutation(result);
+  return saveDocument(toolArgs, runtime, ["update_document", "save_document"]);
 }
 
 function rejectDocumentIdOnCreate(subcommand, parsed) {
@@ -89,7 +83,7 @@ function rejectDocumentIdOnCreate(subcommand, parsed) {
 }
 
 async function documentToolArgs(parsed, runtime, options = {}) {
-  const toolArgs = collectKnownArgs(parsed, ["id", "title", "team", "project", "issue", "initiative", "cycle", "color", "icon", "content"]);
+  const toolArgs = collectKnownArgs(parsed, DOCUMENT_MUTATION_FIELDS);
   if (options.applyDefaultProject && !toolArgs.team && !toolArgs.issue && !toolArgs.initiative && !toolArgs.cycle) {
     await applyRepoProjectDefault(toolArgs, runtime, {
       command: "linear-axi documents create",
@@ -98,6 +92,19 @@ async function documentToolArgs(parsed, runtime, options = {}) {
   }
   if (parsed["content-file"]) toolArgs.content = await readTextFlag(parsed["content-file"], runtime.cwd);
   return toolArgs;
+}
+
+function requireDocumentTitle(toolArgs) {
+  if (!toolArgs.title) throw usage("creating a document requires --title", DOCUMENT_CREATE_HELP);
+}
+
+function requireDocumentId(toolArgs) {
+  if (!toolArgs.id) throw usage("updating a document requires --id", DOCUMENT_UPDATE_HELP);
+}
+
+async function saveDocument(toolArgs, runtime, toolNames) {
+  const result = await callAvailableTool(runtime, toolNames, toolArgs);
+  return renderDocumentMutation(result);
 }
 
 function renderDocumentMutation(result) {

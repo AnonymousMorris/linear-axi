@@ -1,19 +1,19 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
+import { dispatchCommandGroup } from "../lib/cli-helpers.js";
 import { compactRows } from "../lib/linear-format.js";
 import { extractData } from "../lib/mcp-tools.js";
 import { cycleListHelp, groupHelp } from "./help.js";
 
 export async function cycleCommand(args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("cycles", ["list"]);
-
-  switch (subcommand ?? "list") {
-    case "list":
-      return listCyclesCommand(rest, runtime);
-    default:
-      throw usage(`unknown cycles command: ${subcommand}`, ["Run `linear-axi cycles list --team <team-id>`"]);
-  }
+  return dispatchCommandGroup(args, {
+    name: "cycles",
+    help: () => groupHelp("cycles", ["list"]),
+    handlers: {
+      list: (rest) => listCyclesCommand(rest, runtime),
+    },
+    unknownHelp: ["Run `linear-axi cycles list --team <team-id>`"],
+  });
 }
 
 async function listCyclesCommand(args, runtime) {

@@ -33,6 +33,16 @@ export function rejectIdOnCreate(subcommand, resource, help, parsed) {
   }
 }
 
+export function dispatchCommandGroup(args, options) {
+  const [subcommand, ...rest] = args;
+  if (subcommand === "--help" || subcommand === "-h") return options.help();
+
+  const handler = options.handlers[subcommand ?? options.defaultSubcommand ?? "list"];
+  if (handler) return handler(rest);
+
+  throw usage(`unknown ${options.name} command: ${subcommand}`, options.unknownHelp);
+}
+
 export function parseFiniteNumber(name, value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {

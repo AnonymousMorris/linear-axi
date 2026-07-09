@@ -1,7 +1,9 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
 import {
+  collectKnownArgs,
   continuationCommand,
+  dispatchCommandGroup,
   formatCommandArg,
   parseFiniteNumber,
   readTextFlag,
@@ -16,18 +18,19 @@ import {
   rejectUnsupportedCommentFlags,
 } from "./shared.js";
 
-export async function commentCommand(args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("comments", ["list", "create"]);
+const COMMENT_CREATE_HELP = ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`'];
+const COMMENT_MUTATION_FIELDS = ["issue", "body"];
 
-  switch (subcommand ?? "list") {
-    case "list":
-      return listCommentsCommand(rest, runtime);
-    case "create":
-      return createCommentCommand(rest, runtime);
-    default:
-      throw usage(`unknown comments command: ${subcommand}`, ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments create --issue LIN-123 --body \"...\"`"]);
-  }
+export async function commentCommand(args, runtime) {
+  return dispatchCommandGroup(args, {
+    name: "comments",
+    help: () => groupHelp("comments", ["list", "create"]),
+    handlers: {
+      list: (rest) => listCommentsCommand(rest, runtime),
+      create: (rest) => createCommentCommand(rest, runtime),
+    },
+    unknownHelp: ["Run `linear-axi comments list --issue LIN-123`", "Run `linear-axi comments create --issue LIN-123 --body \"...\"`"],
+  });
 }
 
 async function listCommentsCommand(args, runtime) {
@@ -67,27 +70,45 @@ async function createCommentCommand(args, runtime) {
   if (parsed.help) return commentCreateHelp();
   rejectUnsupportedCommentFlags(parsed);
   if (parsed.id) {
-    throw usage("comments create supports issue comments only", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
+    throw usage("comments create supports issue comments only", COMMENT_CREATE_HELP);
   }
-  if (!parsed.issue) {
-    throw usage("comments create requires --issue", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
-  }
-  const toolArgs = { issueId: parsed.issue };
-  toolArgs.body = parsed.body ?? (parsed["body-file"] ? await readTextFlag(parsed["body-file"], runtime.cwd) : undefined);
-  if (!toolArgs.body) {
-    throw usage("--body or --body-file is required", ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`']);
-  }
-  await ensureIssueExists(parsed.issue, runtime);
+  const toolArgs = await commentToolArgs(parsed, runtime);
+  requireCommentIssue(toolArgs);
+  requireCommentBody(toolArgs);
+  await ensureIssueExists(toolArgs.issueId, runtime);
+  return saveComment(toolArgs, runtime);
+}
+
+async function commentToolArgs(parsed, runtime) {
+  const { issue, ...toolArgs } = collectKnownArgs(parsed, COMMENT_MUTATION_FIELDS);
+  if (issue) toolArgs.issueId = issue;
+  if (toolArgs.body === undefined && parsed["body-file"]) toolArgs.body = await readTextFlag(parsed["body-file"], runtime.cwd);
+  return toolArgs;
+}
+
+function requireCommentIssue(toolArgs) {
+  if (!toolArgs.issueId) throw usage("comments create requires --issue", COMMENT_CREATE_HELP);
+}
+
+function requireCommentBody(toolArgs) {
+  if (!toolArgs.body) throw usage("--body or --body-file is required", COMMENT_CREATE_HELP);
+}
+
+async function saveComment(toolArgs, runtime) {
   const result = await runtime.client.callTool("save_comment", toolArgs);
+  return renderCommentMutation(result, toolArgs.issueId);
+}
+
+function renderCommentMutation(result, issueId) {
   const comment = mutationData(result, [
     'Run `linear-axi comments create --issue LIN-123 --body "Ready"`',
-    `Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)}\` to verify comments`,
+    `Run \`linear-axi comments list --issue ${formatCommandArg(issueId)}\` to verify comments`,
   ]);
   const compact = compactCommentMutation(comment);
   return renderToon({
     comment: compact.comment,
     ...(compact.truncated
-      ? { help: [`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`] }
+      ? { help: [`Run \`linear-axi comments list --issue ${formatCommandArg(issueId)} --full\` to show complete comment bodies`] }
       : {}),
   });
 }

@@ -1,6 +1,6 @@
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { collectKnownArgs, rejectIdOnCreate } from "../lib/cli-helpers.js";
+import { collectKnownArgs, dispatchCommandGroup, rejectIdOnCreate } from "../lib/cli-helpers.js";
 import { compactProjectMutation } from "../lib/linear-format.js";
 import { callAvailableTool, mutationData } from "../lib/mcp-tools.js";
 import { groupHelp, projectCreateHelp, projectUpdateHelp } from "./help.js";
@@ -11,23 +11,30 @@ import {
   projectSaveToolArgs,
 } from "./shared.js";
 
-export async function projectCommand(args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("projects", ["list", "create", "update"]);
+const PROJECT_MUTATION_FIELDS = ["id", "name", "team", "teamId", "summary", "description", "state", "status", "lead", "startDate", "targetDate"];
+const PROJECT_CREATE_HELP = [
+  'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
+  "Run `linear-axi teams list --fields id,name,key` to choose a team",
+];
+const PROJECT_UPDATE_HELP = [
+  'Run `linear-axi projects update --id <id> --summary "Updated scope"`',
+  'Run `linear-axi projects list --query "Roadmap" --fields id,name,status` to find the project id',
+];
 
-  switch (subcommand ?? "list") {
-    case "list":
-      return aliasListCommand("projects", rest, runtime);
-    case "create":
-      return createProjectCommand(rest, runtime);
-    case "update":
-      return updateProjectCommand(rest, runtime);
-    default:
-      throw usage(`unknown projects command: ${subcommand}`, [
-        "Run `linear-axi projects list`",
-        'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
-      ]);
-  }
+export async function projectCommand(args, runtime) {
+  return dispatchCommandGroup(args, {
+    name: "projects",
+    help: () => groupHelp("projects", ["list", "create", "update"]),
+    handlers: {
+      list: (rest) => aliasListCommand("projects", rest, runtime),
+      create: (rest) => createProjectCommand(rest, runtime),
+      update: (rest) => updateProjectCommand(rest, runtime),
+    },
+    unknownHelp: [
+      "Run `linear-axi projects list`",
+      'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
+    ],
+  });
 }
 
 async function createProjectCommand(args, runtime) {
@@ -35,15 +42,9 @@ async function createProjectCommand(args, runtime) {
   if (parsed.help) return projectCreateHelp();
   rejectProjectIdOnCreate("create", parsed);
   const toolArgs = projectToolArgs(parsed);
-  if (!toolArgs.name || !(toolArgs.team ?? toolArgs.teamId)) {
-    throw usage("creating a project requires --name and --team", [
-      'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
-      "Run `linear-axi teams list --fields id,name,key` to choose a team",
-    ]);
-  }
+  requireProjectCreateFields(toolArgs);
   await ensureProjectDoesNotExist(toolArgs.name, toolArgs.team ?? toolArgs.teamId, runtime);
-  const result = await callAvailableTool(runtime, ["create_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs));
-  return renderProjectMutation(result);
+  return saveProject(toolArgs, runtime, ["create_project", "save_project"]);
 }
 
 async function updateProjectCommand(args, runtime) {
@@ -51,15 +52,9 @@ async function updateProjectCommand(args, runtime) {
   if (parsed.help) return projectUpdateHelp();
   rejectProjectIdOnCreate("update", parsed);
   const toolArgs = projectToolArgs(parsed);
-  if (!toolArgs.id) {
-    throw usage("updating a project requires --id", [
-      'Run `linear-axi projects update --id <id> --summary "Updated scope"`',
-      'Run `linear-axi projects list --query "Roadmap" --fields id,name,status` to find the project id',
-    ]);
-  }
+  requireProjectId(toolArgs);
   await ensureProjectExists(toolArgs.id, runtime);
-  const result = await callAvailableTool(runtime, ["update_project", "save_project"], (toolName) => projectSaveToolArgs(toolName, toolArgs));
-  return renderProjectMutation(result);
+  return saveProject(toolArgs, runtime, ["update_project", "save_project"]);
 }
 
 function rejectProjectIdOnCreate(subcommand, parsed) {
@@ -70,13 +65,25 @@ function rejectProjectIdOnCreate(subcommand, parsed) {
 }
 
 function projectToolArgs(parsed) {
-  return collectKnownArgs(parsed, ["id", "name", "team", "teamId", "summary", "description", "state", "status", "lead", "startDate", "targetDate"]);
+  return collectKnownArgs(parsed, PROJECT_MUTATION_FIELDS);
+}
+
+function requireProjectCreateFields(toolArgs) {
+  if (!toolArgs.name || !(toolArgs.team ?? toolArgs.teamId)) {
+    throw usage("creating a project requires --name and --team", PROJECT_CREATE_HELP);
+  }
+}
+
+function requireProjectId(toolArgs) {
+  if (!toolArgs.id) throw usage("updating a project requires --id", PROJECT_UPDATE_HELP);
+}
+
+async function saveProject(toolArgs, runtime, toolNames) {
+  const result = await callAvailableTool(runtime, toolNames, (toolName) => projectSaveToolArgs(toolName, toolArgs));
+  return renderProjectMutation(result);
 }
 
 function renderProjectMutation(result) {
-  const project = mutationData(result, [
-    'Run `linear-axi projects create --name "Roadmap" --team "<team>"`',
-    "Run `linear-axi teams list --fields id,name,key` to choose a team",
-  ]);
+  const project = mutationData(result, PROJECT_CREATE_HELP);
   return renderToon({ project: compactProjectMutation(project) });
 }

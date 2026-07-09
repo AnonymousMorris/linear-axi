@@ -3,6 +3,7 @@ import { renderToon } from "../format.js";
 import {
   collectKnownArgs,
   continuationCommand,
+  dispatchCommandGroup,
 } from "../lib/cli-helpers.js";
 import {
   compactRows,
@@ -18,18 +19,20 @@ import {
   DEFAULT_LIMIT,
   LIST_CONTINUATION_FLAGS,
   LIST_TOOL_ALIASES,
+  PROJECT_SCOPED_LIST_ALIASES,
   pluralName,
 } from "./shared.js";
 
 export async function listResourceCommand(alias, args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp(pluralName(alias), ["list"]);
-  if (!subcommand || subcommand === "list") {
-    return aliasListCommand(alias, rest, runtime);
-  }
-  throw usage(`unknown ${pluralName(alias)} command: ${subcommand}`, [
-    `Run \`linear-axi ${pluralName(alias)} list\``,
-  ]);
+  const publicName = pluralName(alias);
+  return dispatchCommandGroup(args, {
+    name: publicName,
+    help: () => groupHelp(publicName, ["list"]),
+    handlers: {
+      list: (rest) => aliasListCommand(alias, rest, runtime),
+    },
+    unknownHelp: [`Run \`linear-axi ${publicName} list\``],
+  });
 }
 
 export async function aliasListCommand(alias, args, runtime) {
@@ -37,7 +40,7 @@ export async function aliasListCommand(alias, args, runtime) {
   const toolNames = LIST_TOOL_ALIASES[alias];
   const parsed = parseFlags(args, { boolean: ["help", "full", "all-projects", "includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"], example: `${publicName} list --limit ${DEFAULT_LIMIT}` });
   if (parsed.help) return listAliasHelp(publicName);
-  if (parsed["all-projects"] && !["issues", "documents"].includes(alias)) {
+  if (parsed["all-projects"] && !PROJECT_SCOPED_LIST_ALIASES.includes(alias)) {
     throw usage("--all-projects is only supported for issues and documents", [
       "Run `linear-axi issues list --all-projects`",
       "Run `linear-axi documents list --all-projects`",
@@ -69,7 +72,7 @@ export async function aliasListCommand(alias, args, runtime) {
     "includeTeams",
   ]);
   if (!("limit" in toolArgs)) toolArgs.limit = DEFAULT_LIMIT;
-  if (["issues", "documents"].includes(alias)) {
+  if (PROJECT_SCOPED_LIST_ALIASES.includes(alias)) {
     await applyRepoProjectDefault(toolArgs, runtime, {
       allProjects: Boolean(parsed["all-projects"]),
       allProjectsCommand: `linear-axi ${publicName} list --all-projects`,
