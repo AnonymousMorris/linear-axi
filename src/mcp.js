@@ -17,13 +17,12 @@ export class LinearMcpClient {
   }
 
   async connect() {
-    const headers = {};
-    if (this.token) {
-      headers.authorization = `Bearer ${this.token}`;
-    }
+    const requestInit = this.token
+      ? { headers: { authorization: `Bearer ${this.token}` } }
+      : undefined;
 
     this.transport = new StreamableHTTPClientTransport(new URL(this.url), {
-      requestInit: Object.keys(headers).length > 0 ? { headers } : undefined,
+      requestInit,
       authProvider: this.authProvider ?? undefined,
       fetch: this.fetchImpl,
     });
