@@ -1,7 +1,7 @@
 import { basename, resolve } from "node:path";
 import { AxiError, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { formatCommandArg } from "../lib/cli-helpers.js";
+import { formatCommandArg, TOOL_BOOLEAN_FLAGS } from "../lib/cli-helpers.js";
 import { sanitizeDocument } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData, hasTool, isUnknownToolError, mutationData } from "../lib/mcp-tools.js";
 import { projectMatches } from "../lib/project-match.js";
@@ -29,11 +29,7 @@ export const PROJECT_SCOPED_LIST_ALIASES = ["issues", "documents"];
 export const LIST_BOOLEAN_FLAGS = [
   "full",
   "all-projects",
-  "includeArchived",
-  "includeMembers",
-  "includeMilestones",
-  "includeStages",
-  "includeTeams",
+  ...TOOL_BOOLEAN_FLAGS,
 ];
 
 export const LIST_TOOL_ARG_FLAGS = [
@@ -55,11 +51,7 @@ export const LIST_TOOL_ARG_FLAGS = [
   "team",
   "teamId",
   "updatedAt",
-  "includeArchived",
-  "includeMembers",
-  "includeMilestones",
-  "includeStages",
-  "includeTeams",
+  ...TOOL_BOOLEAN_FLAGS,
 ];
 
 export const LIST_CONTINUATION_FLAGS = [
@@ -67,28 +59,6 @@ export const LIST_CONTINUATION_FLAGS = [
   "fields",
   "full",
   "all-projects",
-];
-
-export const STATUS_CONTINUATION_FLAGS = [
-  "team",
-  "teamId",
-  "type",
-  "project",
-  "initiative",
-  "user",
-  "limit",
-  "orderBy",
-  "createdAt",
-  "updatedAt",
-  "includeArchived",
-  "full",
-];
-
-export const COMMENT_CONTINUATION_FLAGS = [
-  "issue",
-  "limit",
-  "orderBy",
-  "full",
 ];
 
 export async function getIssueDetail(id, runtime) {
@@ -103,14 +73,10 @@ export async function getIssueDetail(id, runtime) {
 }
 
 export async function ensureIssueExists(id, runtime) {
-  const issue = await getIssueDetail(id, runtime);
-  if (!issue) {
-    throw notFound("issue", id, [
-      `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
-      "Run `linear-axi issues create --title \"Title\" --team \"<team>\"` to create a new issue",
-    ]);
-  }
-  return issue;
+  return requireExistingDetail(getIssueDetail(id, runtime), "issue", id, [
+    `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
+    "Run `linear-axi issues create --title \"Title\" --team \"<team>\"` to create a new issue",
+  ]);
 }
 
 export async function ensureIssueDoesNotExist(title, team, runtime) {
@@ -145,14 +111,10 @@ export async function getProjectDetail(id, runtime) {
 }
 
 export async function ensureProjectExists(id, runtime) {
-  const project = await getProjectDetail(id, runtime);
-  if (!project) {
-    throw notFound("project", id, [
-      `Run \`linear-axi projects list --query ${formatCommandArg(id)} --fields id,name,status\` to search for the project`,
-      'Run `linear-axi projects create --name "Roadmap" --team "<team>"` to create a new project',
-    ]);
-  }
-  return project;
+  return requireExistingDetail(getProjectDetail(id, runtime), "project", id, [
+    `Run \`linear-axi projects list --query ${formatCommandArg(id)} --fields id,name,status\` to search for the project`,
+    'Run `linear-axi projects create --name "Roadmap" --team "<team>"` to create a new project',
+  ]);
 }
 
 export async function ensureProjectDoesNotExist(name, team, runtime) {
@@ -250,14 +212,16 @@ async function ensureNamedResourceDoesNotExist(runtime, options) {
 }
 
 export async function ensureDocumentExists(id, runtime) {
-  const document = await getDocumentDetail(id, runtime);
-  if (!document) {
-    throw notFound("document", id, [
-      `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
-      'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
-    ]);
-  }
-  return document;
+  return requireExistingDetail(getDocumentDetail(id, runtime), "document", id, [
+    `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
+    'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
+  ]);
+}
+
+async function requireExistingDetail(detailPromise, resource, id, help) {
+  const detail = await detailPromise;
+  if (!detail) throw notFound(resource, id, help);
+  return detail;
 }
 
 export async function ensureMilestoneExists(project, id, runtime) {
@@ -353,7 +317,6 @@ function hasText(value) {
 
 function belongsToTeam(item, team) {
   if (team === undefined || team === null || team === "") return true;
-  const expected = String(team).trim().toLocaleLowerCase();
   const candidates = [
     item.team,
     item.team?.id,
@@ -362,5 +325,5 @@ function belongsToTeam(item, team) {
     item.teamId,
     ...(Array.isArray(item.teams) ? item.teams.flatMap((entry) => [entry, entry?.id, entry?.key, entry?.name]) : []),
   ];
-  return candidates.some((candidate) => String(candidate ?? "").trim().toLocaleLowerCase() === expected);
+  return candidates.some((candidate) => isSameText(candidate, team));
 }
