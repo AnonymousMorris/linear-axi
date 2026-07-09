@@ -8,20 +8,17 @@ export async function callAvailableTool(runtime, candidates, args) {
   }
   const preferred = candidates.find((candidate) => names.has(candidate)) ?? candidates[0];
   const argsFor = typeof args === "function" ? args : () => args;
-  try {
-    return await runtime.client.callTool(preferred, argsFor(preferred));
-  } catch (error) {
-    if (!isUnknownToolError(error)) throw error;
-    for (const candidate of candidates) {
-      if (candidate === preferred) continue;
-      try {
-        return await runtime.client.callTool(candidate, argsFor(candidate));
-      } catch (candidateError) {
-        if (!isUnknownToolError(candidateError)) throw candidateError;
-      }
+  const orderedCandidates = [preferred, ...candidates.filter((candidate) => candidate !== preferred)];
+  let preferredError;
+  for (const candidate of orderedCandidates) {
+    try {
+      return await runtime.client.callTool(candidate, argsFor(candidate));
+    } catch (error) {
+      if (!isUnknownToolError(error)) throw error;
+      preferredError ??= error;
     }
-    throw error;
   }
+  throw preferredError;
 }
 
 export function isUnknownToolError(error) {

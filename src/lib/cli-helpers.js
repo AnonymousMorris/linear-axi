@@ -2,6 +2,14 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { usage } from "../args.js";
 
+export const TOOL_BOOLEAN_FLAGS = [
+  "includeArchived",
+  "includeMembers",
+  "includeMilestones",
+  "includeStages",
+  "includeTeams",
+];
+
 export function continuationCommand(baseCommand, parsed, flagNames, cursor) {
   const parts = [baseCommand];
   for (const name of flagNames) {
@@ -56,7 +64,7 @@ export function dispatchCommandGroup(args, options) {
   const handler = options.handlers[subcommand ?? options.defaultSubcommand ?? "list"];
   if (handler) return handler(rest);
 
-  throw usage(`unknown ${options.name} command: ${subcommand}`, options.unknownHelp);
+  throw usage(`unknown ${options.name} command: ${subcommand ?? ""}`.trim(), options.unknownHelp);
 }
 
 export function parseFiniteNumber(name, value) {
@@ -96,6 +104,6 @@ function appendFlag(parts, name, value) {
 
 function coerceArg(name, value) {
   if (["limit", "estimate", "priority"].includes(name)) return parseFiniteNumber(name, value);
-  if (["includeArchived", "includeMembers", "includeMilestones", "includeStages", "includeTeams"].includes(name)) return value === true || value === "true";
+  if (TOOL_BOOLEAN_FLAGS.includes(name)) return value === true || value === "true";
   return value;
 }

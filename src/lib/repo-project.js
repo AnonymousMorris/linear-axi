@@ -20,21 +20,18 @@ export async function applyRepoProjectDefault(toolArgs, runtime, options = {}) {
     ]);
   }
 
-  if (allProjects) return "all-projects";
-  if (toolArgs.project !== undefined) return "explicit";
+  if (allProjects || toolArgs.project !== undefined) return;
 
   const repoProject = await readRepoProject(runtime.cwd);
   if (repoProject) {
     const validated = await validateRepoProject(repoProject, runtime, { command });
     toolArgs.project = validated.project;
-    return "repo-default";
+    return;
   }
 
   if (requireProject) {
     throw usage("No default Linear project is configured for this repository", uninitializedProjectHelp(command, allProjectsCommand));
   }
-
-  return "none";
 }
 
 export function withRepoProject(toolArgs, repoProject) {
