@@ -45,29 +45,6 @@ export function parseFlags(args, options = {}) {
   return parsed;
 }
 
-export function parseJsonObject(value, flagName) {
-  if (value === undefined) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(value);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("not object");
-    }
-    return parsed;
-  } catch {
-    throw usage(`${flagName} must be a JSON object`, [`Run \`linear-axi call <tool> --args '{"limit":10}'\``]);
-  }
-}
-
-export function parseScalar(value) {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  if (value === "null") return null;
-  if (/^-?(0|[1-9]\d*)(\.\d+)?$/.test(value)) return Number(value);
-  return value;
-}
-
 function parseBoolean(value, flagName) {
   if (value === "true") return true;
   if (value === "false") return false;
