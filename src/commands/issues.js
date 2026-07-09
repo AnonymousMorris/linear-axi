@@ -1,17 +1,15 @@
 import { parseFlags, usage } from "../args.js";
-import { renderToon } from "../format.js";
 import {
+  applyTextFileFlag,
   collectKnownArgs,
   dispatchCommandGroup,
-  formatCommandArg,
-  readTextFlag,
   rejectIdOnCreate,
+  requireValue,
 } from "../lib/cli-helpers.js";
 import {
   compactIssueDetail,
   compactIssueMutation,
 } from "../lib/linear-format.js";
-import { mutationData } from "../lib/mcp-tools.js";
 import { applyRepoProjectDefault } from "../lib/repo-project.js";
 import {
   groupHelp,
@@ -23,8 +21,8 @@ import { aliasListCommand } from "./list-resource.js";
 import {
   ensureIssueDoesNotExist,
   ensureIssueExists,
-  getIssueDetail,
-  notFound,
+  renderDetailView,
+  renderMutation,
 } from "./shared.js";
 
 const ISSUE_MUTATION_FIELDS = [
@@ -48,6 +46,10 @@ const ISSUE_CREATE_HELP = [
 const ISSUE_UPDATE_HELP = [
   'Run `linear-axi issues update --id LIN-123 --state "Done"`',
   "Run `linear-axi issues list --query <text>` to find the issue id",
+];
+const ISSUE_ID_ON_CREATE_HELP = [
+  'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
+  'Run `linear-axi issues update --id LIN-123 --state "Done"` to edit an existing issue',
 ];
 
 export async function issueCommand(args, runtime) {
@@ -77,30 +79,26 @@ async function viewIssueCommand(args, runtime) {
     "Run `linear-axi issues list --limit 50` to view many issues",
     "Run `linear-axi issues view <id>` to view one issue",
   ]);
-  const detail = await getIssueDetail(id, runtime);
-  if (!detail) throw notFound("issue", id, [
-    `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
-    'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
-  ]);
-  if (parsed.full) return renderToon({ issue: detail });
-  const compact = compactIssueDetail(detail);
-  return renderToon({
-    issue: compact.issue,
-    ...(compact.truncated ? { help: [`Run \`linear-axi issues view ${id} --full\` to show the complete issue`] } : {}),
+  const detail = await ensureIssueExists(id, runtime);
+  return renderDetailView({
+    resource: "issue",
+    detail,
+    full: parsed.full,
+    compact: compactIssueDetail,
+    fullCommand: `linear-axi issues view ${id} --full`,
   });
 }
 
 async function createIssueCommand(args, runtime) {
   const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'issues create --title "Bug" --team ENG' });
   if (parsed.help) return issueCreateHelp();
-  rejectIssueIdOnCreate("create", parsed);
-  const toolArgs = issueToolArgs(parsed);
-  await readIssueDescriptionFlag(toolArgs, parsed, runtime);
+  rejectIdOnCreate("issue", ISSUE_ID_ON_CREATE_HELP, parsed);
+  const toolArgs = await issueToolArgs(parsed, runtime);
   await applyRepoProjectDefault(toolArgs, runtime, {
     command: "linear-axi issues create",
     requireProject: true,
   });
-  requireIssueCreateFields(toolArgs);
+  requireValue(toolArgs.title && toolArgs.team, "creating an issue requires --title and --team", ISSUE_CREATE_HELP);
   await ensureIssueDoesNotExist(toolArgs.title, toolArgs.team, runtime);
   return saveIssue(toolArgs, runtime, [
     'Run `linear-axi issues create --title "Title" --team "<team>"`',
@@ -111,49 +109,29 @@ async function createIssueCommand(args, runtime) {
 async function updateIssueCommand(args, runtime) {
   const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'issues update --id LIN-123 --state Done' });
   if (parsed.help) return issueUpdateHelp();
-  const toolArgs = issueToolArgs(parsed);
+  const toolArgs = await issueToolArgs(parsed, runtime);
   if (!toolArgs.id) await applyRepoProjectDefault(toolArgs, runtime);
-  await readIssueDescriptionFlag(toolArgs, parsed, runtime);
-  requireIssueId(toolArgs);
+  requireValue(toolArgs.id, "updating an issue requires --id", ISSUE_UPDATE_HELP);
   await ensureIssueExists(toolArgs.id, runtime);
   return saveIssue(toolArgs, runtime, ISSUE_UPDATE_HELP);
 }
 
-function rejectIssueIdOnCreate(subcommand, parsed) {
-  rejectIdOnCreate(subcommand, "issue", [
-    'Run `linear-axi issues create --title "Title" --team "<team>"` to create a new issue',
-    'Run `linear-axi issues update --id LIN-123 --state "Done"` to edit an existing issue',
-  ], parsed);
-}
-
-function issueToolArgs(parsed) {
+async function issueToolArgs(parsed, runtime) {
   const toolArgs = collectKnownArgs(parsed, ISSUE_MUTATION_FIELDS);
   if (parsed.label) toolArgs.labels = parsed.label;
+  await applyTextFileFlag(toolArgs, parsed, {
+    flag: "description-file",
+    field: "description",
+    cwd: runtime.cwd,
+  });
   return toolArgs;
 }
 
-function requireIssueCreateFields(toolArgs) {
-  if (!toolArgs.title || !toolArgs.team) {
-    throw usage("creating an issue requires --title and --team", ISSUE_CREATE_HELP);
-  }
-}
-
-function requireIssueId(toolArgs) {
-  if (!toolArgs.id) throw usage("updating an issue requires --id", ISSUE_UPDATE_HELP);
-}
-
-async function readIssueDescriptionFlag(toolArgs, parsed, runtime) {
-  if (parsed["description-file"]) {
-    toolArgs.description = await readTextFlag(parsed["description-file"], runtime.cwd);
-  }
-}
-
 async function saveIssue(toolArgs, runtime, help) {
-  const result = await runtime.client.callTool("save_issue", toolArgs);
-  return renderIssueMutation(result, help);
-}
-
-function renderIssueMutation(result, help) {
-  const issue = mutationData(result, help);
-  return renderToon({ issue: compactIssueMutation(issue) });
+  return renderMutation(runtime, {
+    tool: "save_issue",
+    args: toolArgs,
+    help,
+    render: (issue) => ({ issue: compactIssueMutation(issue) }),
+  });
 }

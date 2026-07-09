@@ -6,7 +6,7 @@ export function compactRows(alias, data) {
   return asArray(data).map((item) => ({
     id: item.id ?? item.identifier ?? item.key ?? item.slug ?? item.name ?? "",
     name: item.name ?? item.title ?? item.displayName ?? item.email ?? "",
-    state: item.state?.name ?? item.status?.name ?? item.state ?? item.status ?? "",
+    state: rowState(item),
   }));
 }
 
@@ -52,43 +52,29 @@ export function paginationInfo(data, rowCount) {
 }
 
 export function compactComments(data) {
-  return asArray(data).map((comment) => {
-    const body = formattedPreview(comment.body ?? "", 120);
-    return {
-      id: comment.id ?? "",
-      author: comment.user?.name ?? comment.author?.name ?? "",
-      created: comment.createdAt ?? "",
-      body: body.text,
-      truncated: body.truncated,
-    };
-  });
+  return asArray(data).map(compactComment);
 }
 
 export function compactCommentMutation(comment) {
-  const body = formattedPreview(comment.body ?? "", 120);
+  const { truncated, ...compact } = compactComment(comment);
   return {
-    truncated: body.truncated,
-    comment: {
-      id: comment.id ?? "",
-      author: comment.user?.name ?? comment.author?.name ?? "",
-      created: comment.createdAt ?? "",
-      body: body.text,
-    },
+    truncated,
+    comment: compact,
   };
 }
 
 export function compactIssues(data) {
   return groupByStatusPriority(asArray(data).map((issue) => ({
-    state: issue.state?.name ?? issue.status?.name ?? issue.state ?? issue.status ?? "",
+    state: rowState(issue),
     title: issue.title ?? "",
-    assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
+    assignee: personName(issue.assignee),
     id: issue.identifier ?? issue.id ?? "",
   })));
 }
 
 function compactProjects(data) {
   return groupByStatusPriority(asArray(data).map((project) => ({
-    status: project.status?.name ?? project.state?.name ?? project.status ?? project.state ?? "",
+    status: projectStatus(project),
     name: project.name ?? project.title ?? "",
     id: project.id ?? project.identifier ?? "",
   })));
@@ -102,8 +88,8 @@ export function compactIssueDetail(issue) {
     issue: {
       id: issue.identifier ?? issue.id ?? "",
       title: issue.title ?? "",
-      state: issue.state?.name ?? issue.status ?? issue.state ?? "",
-      assignee: issue.assignee?.name ?? issue.assignee?.displayName ?? issue.assignee ?? "",
+      state: issueState(issue),
+      assignee: personName(issue.assignee),
       description: preview.truncated
         ? `${preview.text}... (truncated, ${description.length} chars total)`
         : description,
@@ -116,9 +102,9 @@ export function compactIssueMutation(issue) {
   return {
     id: issue.identifier ?? issue.id ?? "",
     title: issue.title ?? "",
-    state: issue.state?.name ?? issue.status ?? issue.state ?? "",
-    project: issue.project?.name ?? issue.project ?? "",
-    team: issue.team?.name ?? issue.team ?? "",
+    state: issueState(issue),
+    project: namedValue(issue.project),
+    team: namedValue(issue.team),
     url: issue.url ?? "",
   };
 }
@@ -127,7 +113,7 @@ export function compactProjectMutation(project) {
   return {
     id: project.id ?? "",
     name: project.name ?? "",
-    status: project.status?.name ?? project.state?.name ?? project.status ?? project.state ?? "",
+    status: projectStatus(project),
     team: project.team?.name ?? project.teams?.[0]?.name ?? project.team ?? "",
     url: project.url ?? "",
   };
@@ -137,8 +123,8 @@ export function compactDocumentMutation(document) {
   return {
     id: document.id ?? "",
     title: document.title ?? document.name ?? "",
-    team: document.team?.name ?? document.team ?? "",
-    project: document.project?.name ?? document.project ?? "",
+    team: namedValue(document.team),
+    project: namedValue(document.project),
     url: document.url ?? "",
   };
 }
@@ -152,8 +138,8 @@ export function compactDocumentDetail(document, id) {
       id: document.id ?? id ?? "",
       title: document.title ?? document.name ?? "",
       content: preview.text,
-      team: document.team?.name ?? document.team ?? "",
-      project: document.project?.name ?? document.project ?? "",
+      team: namedValue(document.team),
+      project: namedValue(document.project),
       url: document.url ?? "",
     },
   };
@@ -175,6 +161,37 @@ function fieldValue(item, field) {
     return value.name ?? value.displayName ?? value.identifier ?? value.id ?? JSON.stringify(value);
   }
   return value;
+}
+
+function rowState(item) {
+  return item.state?.name ?? item.status?.name ?? item.state ?? item.status ?? "";
+}
+
+function issueState(issue) {
+  return issue.state?.name ?? issue.status ?? issue.state ?? "";
+}
+
+function projectStatus(project) {
+  return project.status?.name ?? project.state?.name ?? project.status ?? project.state ?? "";
+}
+
+function personName(person) {
+  return person?.name ?? person?.displayName ?? person ?? "";
+}
+
+function namedValue(value) {
+  return value?.name ?? value ?? "";
+}
+
+function compactComment(comment) {
+  const body = formattedPreview(comment.body ?? "", 120);
+  return {
+    id: comment.id ?? "",
+    author: comment.user?.name ?? comment.author?.name ?? "",
+    created: comment.createdAt ?? "",
+    body: body.text,
+    truncated: body.truncated,
+  };
 }
 
 function groupByStatusPriority(items) {

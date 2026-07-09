@@ -12,6 +12,12 @@ export function continuationCommand(baseCommand, parsed, flagNames, cursor) {
   return parts.join(" ");
 }
 
+export function appendContinuationHelp(help, baseCommand, parsed, flagNames, cursor) {
+  if (!cursor) return help;
+  help.push(`Run \`${continuationCommand(baseCommand, parsed, flagNames, cursor)}\` to continue`);
+  return help;
+}
+
 export function formatCommandArg(value) {
   const text = String(value);
   if (/^[A-Za-z0-9_./:@-]+$/.test(text)) return text;
@@ -26,11 +32,21 @@ export function collectKnownArgs(parsed, names) {
   return collected;
 }
 
-export function rejectIdOnCreate(subcommand, resource, help, parsed) {
-  if (subcommand === "create" && parsed.id !== undefined) {
+export function rejectIdOnCreate(resource, help, parsed) {
+  if (parsed.id !== undefined) {
     const article = /^[aeiou]/i.test(resource) ? "an" : "a";
     throw usage(`creating ${article} ${resource} does not accept --id`, help);
   }
+}
+
+export function requireValue(value, message, help) {
+  if (!value) throw usage(message, help);
+}
+
+export function requireTeam(parsed, help) {
+  const team = parsed.teamId ?? parsed.team;
+  requireValue(team, "--team is required", help);
+  return team;
 }
 
 export function dispatchCommandGroup(args, options) {
@@ -58,6 +74,12 @@ export async function readTextFlag(path, cwd) {
   } catch {
     throw usage(`file could not be read: ${path}`, ["Rerun with a readable file path"]);
   }
+}
+
+export async function applyTextFileFlag(toolArgs, parsed, options) {
+  if (parsed[options.flag] === undefined) return;
+  if (options.preserveExisting && toolArgs[options.field] !== undefined) return;
+  toolArgs[options.field] = await readTextFlag(parsed[options.flag], options.cwd);
 }
 
 function appendFlag(parts, name, value) {

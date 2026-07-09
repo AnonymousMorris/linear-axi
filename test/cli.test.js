@@ -1721,6 +1721,36 @@ test("projects update falls back to list_projects after get_project mismatch", a
   ]);
 });
 
+test("projects update falls back to list_projects after blank project detail", async () => {
+  const calls = [];
+  let toolDiscoveryCalls = 0;
+
+  await run(
+    ["projects", "update", "--id", "roadmap-slug", "--summary", "Plan"],
+    runtime({
+      listTools: async () => {
+        toolDiscoveryCalls += 1;
+        return [{ name: "get_project" }, { name: "list_projects" }, { name: "save_project" }];
+      },
+      callTool: async (name, args) => {
+        calls.push({ name, args });
+        if (name === "get_project") return { structuredContent: {} };
+        if (name === "list_projects") {
+          return { structuredContent: { projects: [{ slugId: "roadmap-slug", name: "Roadmap" }] } };
+        }
+        return { structuredContent: { slugId: "roadmap-slug", name: "Roadmap" } };
+      },
+    }),
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_project", args: { query: "roadmap-slug" } },
+    { name: "list_projects", args: { query: "roadmap-slug", limit: 10 } },
+    { name: "save_project", args: { id: "roadmap-slug", summary: "Plan" } },
+  ]);
+  assert.equal(toolDiscoveryCalls, 2);
+});
+
 test("milestones create treats text-only mutation responses as errors", async () => {
   await assert.rejects(
     () => run(
@@ -1736,6 +1766,33 @@ test("milestones create treats text-only mutation responses as errors", async ()
       return true;
     },
   );
+});
+
+test("milestones update rejects an empty milestone array before mutation", async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () => run(
+      ["milestones", "update", "--project", "Roadmap", "--id", "m1", "--targetDate", "2026-09-01"],
+      runtime({
+        callTool: async (name, args) => {
+          calls.push({ name, args });
+          if (name === "get_milestone") return { structuredContent: [] };
+          return { structuredContent: { id: "m1" } };
+        },
+      }),
+    ),
+    (error) => {
+      assert.equal(error.kind, "not_found");
+      assert.equal(error.code, "NOT_FOUND");
+      assert.match(error.message, /milestone not found: m1/);
+      return true;
+    },
+  );
+
+  assert.deepEqual(calls, [
+    { name: "get_milestone", args: { project: "Roadmap", query: "m1" } },
+  ]);
 });
 
 test("mutation text responses become structured errors", async () => {
