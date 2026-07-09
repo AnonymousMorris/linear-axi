@@ -77,7 +77,7 @@ function trimFinalNewline(output) {
 
 function cliOptions(args, context) {
   return {
-    argv: normalizeTopLevelArgs(args),
+    argv: args.length === 1 && args[0] === "-h" ? ["--help"] : args,
     stdout: context.stdout,
     description: DESCRIPTION,
     version: VERSION,
@@ -90,13 +90,6 @@ function cliOptions(args, context) {
     resolveContext: () => makeRuntime(context),
     formatError,
   };
-}
-
-function normalizeTopLevelArgs(args) {
-  if (args.length === 1 && args[0] === "-h") {
-    return ["--help"];
-  }
-  return args;
 }
 
 function withRuntimeCleanup(handler) {

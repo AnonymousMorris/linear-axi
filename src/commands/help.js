@@ -147,10 +147,7 @@ examples:
 `;
 }
 
-export function documentCreateHelp() {
-  return `usage: linear-axi documents create --title <title> [parent] [--content <markdown> | --content-file <path>]
-flags:
-  --title <title>
+const DOCUMENT_MUTATION_FIELDS_HELP = `  --title <title>
   --team <team>
   --project <project>
   --issue <issue>
@@ -160,7 +157,12 @@ flags:
   --icon <icon>
   --content <markdown>
   --content-file <path>
-examples:
+`;
+
+export function documentCreateHelp() {
+  return `usage: linear-axi documents create --title <title> [parent] [--content <markdown> | --content-file <path>]
+flags:
+${DOCUMENT_MUTATION_FIELDS_HELP}examples:
   linear-axi documents create --title "Spec" --team ENG --content-file spec.md
 `;
 }
@@ -169,17 +171,7 @@ export function documentUpdateHelp() {
   return `usage: linear-axi documents update --id <id> [fields]
 flags:
   --id <id>
-  --title <title>
-  --team <team>
-  --project <project>
-  --issue <issue>
-  --initiative <initiative>
-  --cycle <cycle>
-  --color <color>
-  --icon <icon>
-  --content <markdown>
-  --content-file <path>
-examples:
+${DOCUMENT_MUTATION_FIELDS_HELP}examples:
   linear-axi documents update --id <id> --content "Updated"
 `;
 }
@@ -192,10 +184,7 @@ examples:
 `;
 }
 
-export function projectCreateHelp() {
-  return `usage: linear-axi projects create --name <name> --team <team> [fields]
-flags:
-  --name <name>
+const PROJECT_MUTATION_FIELDS_HELP = `  --name <name>
   --team <team>
   --teamId <team-id>
   --summary <text>
@@ -205,7 +194,12 @@ flags:
   --lead <user>
   --startDate <yyyy-mm-dd>
   --targetDate <yyyy-mm-dd>
-examples:
+`;
+
+export function projectCreateHelp() {
+  return `usage: linear-axi projects create --name <name> --team <team> [fields]
+flags:
+${PROJECT_MUTATION_FIELDS_HELP}examples:
   linear-axi projects create --name "Roadmap" --team ENG
 `;
 }
@@ -214,17 +208,7 @@ export function projectUpdateHelp() {
   return `usage: linear-axi projects update --id <id> [fields]
 flags:
   --id <id>
-  --name <name>
-  --team <team>
-  --teamId <team-id>
-  --summary <text>
-  --description <markdown>
-  --state <state>
-  --status <status>
-  --lead <user>
-  --startDate <yyyy-mm-dd>
-  --targetDate <yyyy-mm-dd>
-examples:
+${PROJECT_MUTATION_FIELDS_HELP}examples:
   linear-axi projects update --id <id> --summary "Updated scope"
 `;
 }

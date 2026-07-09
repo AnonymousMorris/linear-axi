@@ -34,11 +34,6 @@ export async function applyRepoProjectDefault(toolArgs, runtime, options = {}) {
   }
 }
 
-export function withRepoProject(toolArgs, repoProject) {
-  if (!repoProject || toolArgs.project !== undefined) return toolArgs;
-  return { ...toolArgs, project: repoProject.project };
-}
-
 export async function validateRepoProject(repoProject, runtime, options = {}) {
   if (!repoProject) return null;
   if (!(await canValidateProjects(runtime))) return repoProject;

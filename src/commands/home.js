@@ -2,7 +2,7 @@ import { collapseHome } from "../config.js";
 import { formatCommandArg } from "../lib/cli-helpers.js";
 import { paginationInfo } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData } from "../lib/mcp-tools.js";
-import { extractWorkspaceName, readRepoProject, validateRepoProject, withRepoProject } from "../lib/repo-project.js";
+import { extractWorkspaceName, readRepoProject, validateRepoProject } from "../lib/repo-project.js";
 import { mcpErrorMessage, workspaceName } from "./shared.js";
 
 export async function homeCommand(runtime) {
@@ -33,7 +33,12 @@ export async function homeCommand(runtime) {
   let validatedProject = repoProject;
   try {
     validatedProject = await validateRepoProject(repoProject, runtime);
-    const result = await runtime.client.callTool("list_issues", withRepoProject({ assignee: "me", limit: 10, orderBy: "updatedAt" }, validatedProject));
+    const result = await runtime.client.callTool("list_issues", {
+      assignee: "me",
+      limit: 10,
+      orderBy: "updatedAt",
+      project: validatedProject.project,
+    });
     const data = extractData(result);
     issueCount = asArray(data).length;
     issueMore = Boolean(paginationInfo(data, issueCount).cursor);
