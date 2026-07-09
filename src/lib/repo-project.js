@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { usage } from "../args.js";
 import { formatCommandArg } from "./cli-helpers.js";
 import { asArray, extractData, hasTool } from "./mcp-tools.js";
+import { projectMatches } from "./project-match.js";
 
 export async function applyRepoProjectDefault(toolArgs, runtime, options = {}) {
   const {
@@ -64,13 +65,13 @@ async function getValidatingProject(project, runtime) {
   if (await hasTool(runtime, "get_project")) {
     const detailed = await runtime.client.callTool("get_project", { query: project });
     const data = extractData(detailed);
-    if (projectMatches(data, project)) return data;
+    if (projectMatches(data, project, { normalizeIdentifiers: true })) return data;
     if (!(await hasTool(runtime, "list_projects"))) return null;
   }
 
   const listed = await runtime.client.callTool("list_projects", { query: project, limit: 10 });
   const projects = asArray(extractData(listed));
-  return projects.find((candidate) => projectMatches(candidate, project)) ?? null;
+  return projects.find((candidate) => projectMatches(candidate, project, { normalizeIdentifiers: true })) ?? null;
 }
 
 export function projectFileValue(repoProject) {
@@ -135,16 +136,6 @@ function invalidRepoProject(project, command, workspace) {
     ...(workspace ? [`The saved workspace is ${workspace}`] : []),
     ...(command ? [`Run \`${command} --project "<project>"\` to choose a project once`] : []),
   ]);
-}
-
-function projectMatches(project, value) {
-  if (!project || typeof project !== "object" || Array.isArray(project)) return false;
-  const expected = normalizeProject(value);
-  return [project.id, project.slugId, project.name].some((candidate) => normalizeProject(candidate) === expected);
-}
-
-function normalizeProject(value) {
-  return String(value ?? "").trim().toLocaleLowerCase();
 }
 
 function normalizeWorkspace(value) {
