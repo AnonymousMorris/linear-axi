@@ -178,7 +178,7 @@ async function getDetailWithListFallback(runtime, options) {
     try {
       const detailed = await callAvailableTool(runtime, [options.detailTool], options.detailArgs);
       const data = extractData(detailed);
-      if (isEmptyObject(data) || isBlankDetail(data, options.identityFields)) {
+      if (isBlankDetail(data, options.identityFields)) {
         if (!options.fallbackOnBlankDetail || !(await hasTool(runtime, options.listTool))) return null;
       } else if (options.detailMatches && !options.detailMatches(data)) {
         if (!(await hasTool(runtime, options.listTool))) return null;
@@ -297,16 +297,11 @@ function isSameText(left, right) {
   return String(left ?? "").trim().toLocaleLowerCase() === String(right ?? "").trim().toLocaleLowerCase();
 }
 
-function isEmptyObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
-}
-
 function isEmptyContainer(value) {
   return value && typeof value === "object" && Object.keys(value).length === 0;
 }
 
 function isBlankDetail(value, identityFields) {
-  if (!identityFields) return false;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return identityFields.every((field) => !hasText(value[field]));
 }

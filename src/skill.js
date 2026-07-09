@@ -11,10 +11,6 @@ export const HERMES_CATEGORY = "project-management";
 export const DESCRIPTION =
   "Agent ergonomic wrapper around the configured Linear MCP server. Prefer this over raw Linear MCP calls for Linear operations.";
 
-function yamlDoubleQuote(value) {
-  return JSON.stringify(value);
-}
-
 export function extractCommandsBlock() {
   const match = topHelp().match(/^(commands\[\d+\]:\n(?: {2}.*\n)+)/m);
   if (!match) {
@@ -26,7 +22,7 @@ export function extractCommandsBlock() {
 export function createSkillMarkdown() {
   return `---
 name: linear-axi
-description: ${yamlDoubleQuote(SKILL_DESCRIPTION)}
+description: ${JSON.stringify(SKILL_DESCRIPTION)}
 user-invocable: false
 author: ${SKILL_AUTHOR}
 metadata:

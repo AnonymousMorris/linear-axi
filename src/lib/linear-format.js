@@ -8,6 +8,15 @@ const FIELD_HINTS = {
   users: "id,name,email",
 };
 
+const STATUS_RANKS = {
+  "in progress": 0,
+  started: 0,
+  planned: 1,
+  todo: 1,
+  "to do": 1,
+  backlog: 2,
+};
+
 export function compactRows(alias, data) {
   if (alias === "issues") return compactIssues(data);
   if (alias === "projects") return compactProjects(data);
@@ -42,27 +51,22 @@ export function paginationInfo(data, rowCount) {
   const cursor = data?.cursor ?? data?.nextCursor ?? data?.pageInfo?.endCursor;
   const hasCursor = cursor !== undefined && cursor !== null && cursor !== "";
   const hasNextPage = hasNextPageValue === undefined ? hasCursor : Boolean(hasNextPageValue);
-  if (typeof total === "number") {
-    return {
-      count: `${rowCount} of ${total} total`,
-      cursor: hasNextPage ? cursor : undefined,
-    };
-  }
   return {
-    count: hasNextPage ? `${rowCount} returned (more available)` : `${rowCount} returned`,
+    count: typeof total === "number"
+      ? `${rowCount} of ${total} total`
+      : `${rowCount} returned${hasNextPage ? " (more available)" : ""}`,
     cursor: hasNextPage ? cursor : undefined,
   };
 }
 
-export function compactComments(data) {
-  return asArray(data).map(compactComment);
-}
-
-export function compactCommentMutation(comment) {
-  const { truncated, ...compact } = compactComment(comment);
+export function compactComment(comment) {
+  const body = formattedPreview(comment.body ?? "", 120);
   return {
-    truncated,
-    comment: compact,
+    id: comment.id ?? "",
+    author: comment.user?.name ?? comment.author?.name ?? "",
+    created: comment.createdAt ?? "",
+    body: body.text,
+    truncated: body.truncated,
   };
 }
 
@@ -184,36 +188,13 @@ function namedValue(value) {
   return value?.name ?? value ?? "";
 }
 
-function compactComment(comment) {
-  const body = formattedPreview(comment.body ?? "", 120);
-  return {
-    id: comment.id ?? "",
-    author: comment.user?.name ?? comment.author?.name ?? "",
-    created: comment.createdAt ?? "",
-    body: body.text,
-    truncated: body.truncated,
-  };
-}
-
 function groupByStatusPriority(items) {
-  return items.map((item, index) => ({ item, index })).sort((left, right) => {
-    const leftRank = statusRank(left.item.status ?? left.item.state);
-    const rightRank = statusRank(right.item.status ?? right.item.state);
-    if (leftRank !== rightRank) return leftRank - rightRank;
-    const leftStatus = statusLabel(left.item.status ?? left.item.state);
-    const rightStatus = statusLabel(right.item.status ?? right.item.state);
-    const statusCompare = leftStatus.localeCompare(rightStatus);
-    if (statusCompare !== 0) return statusCompare;
-    return left.index - right.index;
-  }).map(({ item }) => item);
-}
-
-function statusRank(value) {
-  const normalized = statusLabel(value);
-  if (normalized === "in progress" || normalized === "started") return 0;
-  if (normalized === "planned" || normalized === "todo" || normalized === "to do") return 1;
-  if (normalized === "backlog") return 2;
-  return 3;
+  return items.sort((left, right) => {
+    const leftStatus = statusLabel(left.status ?? left.state);
+    const rightStatus = statusLabel(right.status ?? right.state);
+    const rankDifference = (STATUS_RANKS[leftStatus] ?? 3) - (STATUS_RANKS[rightStatus] ?? 3);
+    return rankDifference || leftStatus.localeCompare(rightStatus);
+  });
 }
 
 function statusLabel(value) {
@@ -222,10 +203,9 @@ function statusLabel(value) {
 
 function formattedPreview(value, limit) {
   const text = String(value ?? "");
-  const preview = truncate(text, limit);
-  if (!preview.truncated) return { text, truncated: false };
+  if (text.length <= limit) return { text, truncated: false };
   return {
-    text: `${preview.text}... (truncated, ${text.length} chars total)`,
+    text: `${text.slice(0, limit)}... (truncated, ${text.length} chars total)`,
     truncated: true,
   };
 }
@@ -233,9 +213,4 @@ function formattedPreview(value, limit) {
 function rewriteMcpHints(text, id) {
   const replacement = id ? `run \`linear-axi documents view ${id} --full\`` : "run `linear-axi documents view <id> --full`";
   return text.replace(/use `get_document`/g, replacement);
-}
-
-function truncate(text, limit) {
-  if (text.length <= limit) return { text, truncated: false };
-  return { text: text.slice(0, limit), truncated: true };
 }
