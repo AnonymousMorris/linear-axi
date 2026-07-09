@@ -10,19 +10,15 @@ export const TOOL_BOOLEAN_FLAGS = [
   "includeTeams",
 ];
 
-export function continuationCommand(baseCommand, parsed, flagNames, cursor) {
+export function appendContinuationHelp(help, baseCommand, parsed, flagNames, cursor) {
+  if (!cursor) return help;
   const parts = [baseCommand];
   for (const name of flagNames) {
     if (parsed[name] === undefined) continue;
     appendFlag(parts, name, parsed[name]);
   }
   appendFlag(parts, "cursor", cursor);
-  return parts.join(" ");
-}
-
-export function appendContinuationHelp(help, baseCommand, parsed, flagNames, cursor) {
-  if (!cursor) return help;
-  help.push(`Run \`${continuationCommand(baseCommand, parsed, flagNames, cursor)}\` to continue`);
+  help.push(`Run \`${parts.join(" ")}\` to continue`);
   return help;
 }
 

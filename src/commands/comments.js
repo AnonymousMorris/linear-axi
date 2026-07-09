@@ -8,7 +8,7 @@ import {
   formatCommandArg,
   requireValue,
 } from "../lib/cli-helpers.js";
-import { compactCommentMutation, compactComments, paginationInfo } from "../lib/linear-format.js";
+import { compactComment, paginationInfo } from "../lib/linear-format.js";
 import { asArray, extractData } from "../lib/mcp-tools.js";
 import { commentCreateHelp, commentListHelp, groupHelp } from "./help.js";
 import {
@@ -49,11 +49,12 @@ async function listCommentsCommand(args, runtime) {
   toolArgs.issueId = issue;
   const result = await runtime.client.callTool("list_comments", toolArgs);
   const data = extractData(result);
-  const rows = parsed.full ? data : compactComments(data);
-  const rowCount = asArray(data).length;
+  const comments = asArray(data);
+  const rows = parsed.full ? data : comments.map(compactComment);
+  const rowCount = comments.length;
   const page = paginationInfo(data, rowCount);
   const help = [`Run \`linear-axi comments create --issue ${parsed.issue} --body "..."\` to add a comment`];
-  if (!parsed.full && Array.isArray(rows) && rows.some((comment) => comment.truncated)) {
+  if (!parsed.full && rows.some((comment) => comment.truncated)) {
     help.push(`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`);
   }
   appendContinuationHelp(help, "linear-axi comments list", parsed, COMMENT_CONTINUATION_FLAGS, page.cursor);
@@ -100,10 +101,10 @@ async function saveComment(toolArgs, runtime) {
       `Run \`linear-axi comments list --issue ${formatCommandArg(toolArgs.issueId)}\` to verify comments`,
     ],
     render: (comment) => {
-      const compact = compactCommentMutation(comment);
+      const { truncated, ...compact } = compactComment(comment);
       return {
-        comment: compact.comment,
-        ...(compact.truncated
+        comment: compact,
+        ...(truncated
           ? { help: [`Run \`linear-axi comments list --issue ${formatCommandArg(toolArgs.issueId)} --full\` to show complete comment bodies`] }
           : {}),
       };
