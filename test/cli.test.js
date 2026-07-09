@@ -267,6 +267,25 @@ test("empty lists render as gh-axi-style empty arrays", async () => {
   assert.doesNotMatch(output, /--fields/);
 });
 
+test("empty list continuation hints do not leak across calls", async () => {
+  let calls = 0;
+  const client = runtime({
+    callTool: async () => {
+      calls += 1;
+      return calls === 1
+        ? { structuredContent: { projects: [], cursor: "next-page" } }
+        : { structuredContent: { projects: [] } };
+    },
+  });
+
+  const firstOutput = await run(["projects", "list"], client);
+  const secondOutput = await run(["projects", "list"], client);
+
+  assert.match(firstOutput, /--cursor next-page/);
+  assert.doesNotMatch(secondOutput, /--cursor next-page/);
+  assert.match(secondOutput, /help\[1\]:/);
+});
+
 test("projects list uses list_projects wrapper", async () => {
   let seen;
   const output = await run(

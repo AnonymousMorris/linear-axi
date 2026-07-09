@@ -4,7 +4,25 @@ import { appendContinuationHelp, collectKnownArgs, dispatchCommandGroup, formatC
 import { compactRows, paginationInfo } from "../lib/linear-format.js";
 import { asArray, callAvailableTool, extractData } from "../lib/mcp-tools.js";
 import { groupHelp, statusListHelp } from "./help.js";
-import { STATUS_CONTINUATION_FLAGS } from "./shared.js";
+
+const STATUS_LIST_FIELDS = [
+  "team",
+  "teamId",
+  "type",
+  "project",
+  "initiative",
+  "user",
+  "limit",
+  "cursor",
+  "orderBy",
+  "createdAt",
+  "updatedAt",
+  "includeArchived",
+];
+const STATUS_CONTINUATION_FLAGS = [
+  ...STATUS_LIST_FIELDS.filter((name) => name !== "cursor"),
+  "full",
+];
 
 export async function statusCommand(args, runtime) {
   return dispatchCommandGroup(args, {
@@ -21,7 +39,7 @@ async function listStatusesCommand(args, runtime) {
   const parsed = parseFlags(args, { boolean: ["help", "full", "includeArchived"], example: "statuses list --team ENG" });
   if (parsed.help) return statusListHelp();
   const team = requireTeam(parsed, ["Run `linear-axi statuses list --team <team>`"]);
-  const result = await callAvailableTool(runtime, ["list_issue_statuses"], collectKnownArgs(parsed, ["team", "teamId", "type", "project", "initiative", "user", "limit", "cursor", "orderBy", "createdAt", "updatedAt", "includeArchived"]));
+  const result = await callAvailableTool(runtime, ["list_issue_statuses"], collectKnownArgs(parsed, STATUS_LIST_FIELDS));
   const data = extractData(result);
   const rows = parsed.full ? data : compactRows("statuses", data);
   const rowCount = asArray(data).length;

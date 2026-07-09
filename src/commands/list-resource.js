@@ -25,6 +25,15 @@ import {
   pluralName,
 } from "./shared.js";
 
+const EMPTY_LIST_HINTS = {
+  issues: [
+    'Run `linear-axi issues create --title "..." --team "<team>"` to create an issue',
+    "Run `linear-axi issues list --state done` to see done issues",
+  ],
+  projects: ['Run `linear-axi projects create --name "..." --team "<team>"` to create a project'],
+  documents: ['Run `linear-axi documents create --title "..." --team "<team>" --content-file <path>` to create a document'],
+};
+
 export async function listResourceCommand(alias, args, runtime) {
   const publicName = pluralName(alias);
   return dispatchCommandGroup(args, {
@@ -69,37 +78,18 @@ export async function aliasListCommand(alias, args, runtime) {
       : compactRows(alias, data);
   const rowCount = dataRows.length;
   const page = paginationInfo(data, rowCount);
-  const listValue = Array.isArray(rows) && rows.length === 0 ? [] : rows;
   const help = listHints(publicName, rowCount);
   appendContinuationHelp(help, `linear-axi ${publicName} list`, parsed, LIST_CONTINUATION_FLAGS, page.cursor);
   return renderToon({
     count: page.count,
     ...(page.cursor ? { cursor: page.cursor } : {}),
-    [publicName]: listValue,
+    [publicName]: rows,
     help,
   });
 }
 
 function listHints(publicName, rowCount) {
-  if (rowCount === 0) return emptyListHints(publicName);
-  return [`Run \`linear-axi ${publicName} list --fields ${fieldHint(publicName)}\` to choose fields`];
-}
-
-function emptyListHints(publicName) {
-  if (publicName === "issues") {
-    return [
-      'Run `linear-axi issues create --title "..." --team "<team>"` to create an issue',
-      "Run `linear-axi issues list --state done` to see done issues",
-    ];
-  }
-  if (publicName === "projects") {
-    return ['Run `linear-axi projects create --name "..." --team "<team>"` to create a project'];
-  }
-  if (publicName === "documents") {
-    return ['Run `linear-axi documents create --title "..." --team "<team>" --content-file <path>` to create a document'];
-  }
-  if (publicName === "comments") {
-    return ['Run `linear-axi comments create --issue <id> --body-file <path>` to create a comment'];
-  }
-  return [`Run \`linear-axi ${publicName} list --query "<text>"\` to search ${publicName}`];
+  if (rowCount > 0) return [`Run \`linear-axi ${publicName} list --fields ${fieldHint(publicName)}\` to choose fields`];
+  const hints = EMPTY_LIST_HINTS[publicName] ?? [`Run \`linear-axi ${publicName} list --query "<text>"\` to search ${publicName}`];
+  return [...hints];
 }

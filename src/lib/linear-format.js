@@ -1,5 +1,13 @@
 import { asArray } from "./mcp-tools.js";
 
+const FIELD_HINTS = {
+  issues: "id,title,state,assignee",
+  documents: "id,title,updatedAt",
+  projects: "id,name,status",
+  teams: "id,name,key",
+  users: "id,name,email",
+};
+
 export function compactRows(alias, data) {
   if (alias === "issues") return compactIssues(data);
   if (alias === "projects") return compactProjects(data);
@@ -15,12 +23,7 @@ export function parseFields(fields) {
 }
 
 export function fieldHint(publicName) {
-  if (publicName === "issues") return "id,title,state,assignee";
-  if (publicName === "documents") return "id,title,updatedAt";
-  if (publicName === "projects") return "id,name,status";
-  if (publicName === "teams") return "id,name,key";
-  if (publicName === "users") return "id,name,email";
-  return "id,name,state";
+  return FIELD_HINTS[publicName] ?? "id,name,state";
 }
 
 export function selectFields(items, fields) {
@@ -82,7 +85,7 @@ function compactProjects(data) {
 
 export function compactIssueDetail(issue) {
   const description = String(issue.description ?? issue.body ?? "");
-  const preview = truncate(description, 1000);
+  const preview = formattedPreview(description, 1000);
   return {
     truncated: preview.truncated,
     issue: {
@@ -90,9 +93,7 @@ export function compactIssueDetail(issue) {
       title: issue.title ?? "",
       state: issueState(issue),
       assignee: personName(issue.assignee),
-      description: preview.truncated
-        ? `${preview.text}... (truncated, ${description.length} chars total)`
-        : description,
+      description: preview.text,
       url: issue.url ?? "",
     },
   };

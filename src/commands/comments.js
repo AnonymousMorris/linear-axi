@@ -12,7 +12,6 @@ import { compactCommentMutation, compactComments, paginationInfo } from "../lib/
 import { asArray, extractData } from "../lib/mcp-tools.js";
 import { commentCreateHelp, commentListHelp, groupHelp } from "./help.js";
 import {
-  COMMENT_CONTINUATION_FLAGS,
   DEFAULT_LIMIT,
   ensureIssueExists,
   rejectUnsupportedCommentFlags,
@@ -21,6 +20,10 @@ import {
 
 const COMMENT_CREATE_HELP = ['Run `linear-axi comments create --issue LIN-123 --body "Ready"`'];
 const COMMENT_LIST_FIELDS = ["issue", "limit", "cursor", "orderBy"];
+const COMMENT_CONTINUATION_FLAGS = [
+  ...COMMENT_LIST_FIELDS.filter((name) => name !== "cursor"),
+  "full",
+];
 const COMMENT_MUTATION_FIELDS = ["issue", "body"];
 
 export async function commentCommand(args, runtime) {
@@ -49,7 +52,6 @@ async function listCommentsCommand(args, runtime) {
   const rows = parsed.full ? data : compactComments(data);
   const rowCount = asArray(data).length;
   const page = paginationInfo(data, rowCount);
-  const commentsValue = Array.isArray(rows) && rows.length === 0 ? [] : rows;
   const help = [`Run \`linear-axi comments create --issue ${parsed.issue} --body "..."\` to add a comment`];
   if (!parsed.full && Array.isArray(rows) && rows.some((comment) => comment.truncated)) {
     help.push(`Run \`linear-axi comments list --issue ${formatCommandArg(parsed.issue)} --full\` to show complete comment bodies`);
@@ -58,7 +60,7 @@ async function listCommentsCommand(args, runtime) {
   return renderToon({
     count: page.count,
     ...(page.cursor ? { cursor: page.cursor } : {}),
-    comments: parsed.full ? commentsValue : commentsValue.map?.(({ truncated, ...comment }) => comment) ?? commentsValue,
+    comments: parsed.full ? rows : rows.map(({ truncated, ...comment }) => comment),
     help,
   });
 }
