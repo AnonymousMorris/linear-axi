@@ -1,8 +1,10 @@
 import { basename, resolve } from "node:path";
 import { AxiError, usage } from "../args.js";
-import { formatCommandArg } from "../lib/cli-helpers.js";
+import { renderToon } from "../format.js";
+import { formatCommandArg, TOOL_BOOLEAN_FLAGS } from "../lib/cli-helpers.js";
 import { sanitizeDocument } from "../lib/linear-format.js";
-import { asArray, callAvailableTool, extractData, hasTool, isUnknownToolError } from "../lib/mcp-tools.js";
+import { asArray, callAvailableTool, extractData, hasTool, isUnknownToolError, mutationData } from "../lib/mcp-tools.js";
+import { projectMatches } from "../lib/project-match.js";
 import { findGitRoot } from "../lib/repo-project.js";
 
 export const DEFAULT_LIMIT = 50;
@@ -22,9 +24,18 @@ export const LIST_TOOL_ALIASES = {
   label: ["list_issue_labels"],
 };
 
-export const LIST_CONTINUATION_FLAGS = [
+export const PROJECT_SCOPED_LIST_ALIASES = ["issues", "documents"];
+
+export const LIST_BOOLEAN_FLAGS = [
+  "full",
+  "all-projects",
+  ...TOOL_BOOLEAN_FLAGS,
+];
+
+export const LIST_TOOL_ARG_FLAGS = [
   "assignee",
   "createdAt",
+  "cursor",
   "cycle",
   "delegate",
   "label",
@@ -40,110 +51,87 @@ export const LIST_CONTINUATION_FLAGS = [
   "team",
   "teamId",
   "updatedAt",
-  "includeArchived",
-  "includeMembers",
-  "includeMilestones",
-  "includeStages",
-  "includeTeams",
+  ...TOOL_BOOLEAN_FLAGS,
+];
+
+export const LIST_CONTINUATION_FLAGS = [
+  ...LIST_TOOL_ARG_FLAGS.filter((name) => name !== "cursor"),
   "fields",
   "full",
   "all-projects",
 ];
 
-export const STATUS_CONTINUATION_FLAGS = [
-  "team",
-  "teamId",
-  "type",
-  "project",
-  "initiative",
-  "user",
-  "limit",
-  "orderBy",
-  "createdAt",
-  "updatedAt",
-  "includeArchived",
-  "full",
-];
-
-export const COMMENT_CONTINUATION_FLAGS = [
-  "issue",
-  "limit",
-  "orderBy",
-  "full",
-];
-
 export async function getIssueDetail(id, runtime) {
-  try {
-    const detailed = await callAvailableTool(runtime, ["get_issue"], { id });
-    const data = extractData(detailed);
-    return isEmptyObject(data) || isBlankIssueDetail(data) ? null : data;
-  } catch (error) {
-    if (!isUnknownToolError(error)) throw error;
-  }
-
-  const listed = await runtime.client.callTool("list_issues", { query: id, limit: 10 });
-  const rawMatches = asArray(extractData(listed)).filter((issue) => issue.id === id || issue.identifier === id);
-  if (rawMatches.length === 0) return null;
-  return rawMatches[0];
+  return getDetailWithListFallback(runtime, {
+    detailTool: "get_issue",
+    detailArgs: { id },
+    listTool: "list_issues",
+    listArgs: { query: id, limit: 10 },
+    identityFields: ["identifier", "id", "title"],
+    matches: (issue) => issue.id === id || issue.identifier === id,
+  });
 }
 
 export async function ensureIssueExists(id, runtime) {
-  const issue = await getIssueDetail(id, runtime);
-  if (!issue) {
-    throw notFound("issue", id, [
-      `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
-      "Run `linear-axi issues create --title \"Title\" --team \"<team>\"` to create a new issue",
-    ]);
-  }
-  return issue;
+  return requireExistingDetail(getIssueDetail(id, runtime), "issue", id, [
+    `Run \`linear-axi issues list --query ${formatCommandArg(id)}\` to search for the issue`,
+    "Run `linear-axi issues create --title \"Title\" --team \"<team>\"` to create a new issue",
+  ]);
 }
 
 export async function ensureIssueDoesNotExist(title, team, runtime) {
-  const listed = await runtime.client.callTool("list_issues", { query: title, team, limit: 10 });
-  const match = asArray(extractData(listed)).find((issue) => isSameText(issue.title, title) && belongsToTeam(issue, team));
-  if (!match) return;
-  const id = match.identifier ?? match.id ?? "<id>";
-  throw new AxiError("operational", `issue already exists: ${id} ${match.title ?? title}`, [
-    `Run \`linear-axi issues view ${id}\` to inspect the existing issue`,
-    `Run \`linear-axi issues update --id ${id} --state "<state>"\` to edit it`,
-    `Run \`linear-axi issues create --title ${formatCommandArg(`${title} copy`)} --team ${formatCommandArg(team)}\` to create a distinct issue`,
-  ]);
+  await ensureNamedResourceDoesNotExist(runtime, {
+    resource: "issue",
+    listTool: "list_issues",
+    listArgs: { query: title, team, limit: 10 },
+    query: title,
+    team,
+    name: (issue) => issue.title,
+    id: (issue) => issue.identifier ?? issue.id ?? "<id>",
+    help: (id) => [
+      `Run \`linear-axi issues view ${id}\` to inspect the existing issue`,
+      `Run \`linear-axi issues update --id ${id} --state "<state>"\` to edit it`,
+      `Run \`linear-axi issues create --title ${formatCommandArg(`${title} copy`)} --team ${formatCommandArg(team)}\` to create a distinct issue`,
+    ],
+  });
 }
 
 export async function getProjectDetail(id, runtime) {
-  if (await hasTool(runtime, "get_project")) {
-    const detailed = await runtime.client.callTool("get_project", { query: id });
-    const data = extractData(detailed);
-    if (!isEmptyObject(data) && !isBlankProjectDetail(data) && projectMatches(data, id)) return data;
-    if (!(await hasTool(runtime, "list_projects"))) return null;
-  }
-
-  const listed = await runtime.client.callTool("list_projects", { query: id, limit: 10 });
-  const matches = asArray(extractData(listed)).filter((project) => projectMatches(project, id));
-  return matches[0] ?? null;
+  return getDetailWithListFallback(runtime, {
+    detailTool: "get_project",
+    detailArgs: { query: id },
+    listTool: "list_projects",
+    listArgs: { query: id, limit: 10 },
+    identityFields: ["id", "slugId", "name"],
+    requireKnownDetailTool: true,
+    fallbackOnBlankDetail: true,
+    detailMatches: (project) => projectMatches(project, id),
+    matches: (project) => projectMatches(project, id),
+  });
 }
 
 export async function ensureProjectExists(id, runtime) {
-  const project = await getProjectDetail(id, runtime);
-  if (!project) {
-    throw notFound("project", id, [
-      `Run \`linear-axi projects list --query ${formatCommandArg(id)} --fields id,name,status\` to search for the project`,
-      'Run `linear-axi projects create --name "Roadmap" --team "<team>"` to create a new project',
-    ]);
-  }
-  return project;
+  return requireExistingDetail(getProjectDetail(id, runtime), "project", id, [
+    `Run \`linear-axi projects list --query ${formatCommandArg(id)} --fields id,name,status\` to search for the project`,
+    'Run `linear-axi projects create --name "Roadmap" --team "<team>"` to create a new project',
+  ]);
 }
 
 export async function ensureProjectDoesNotExist(name, team, runtime) {
-  const listed = await runtime.client.callTool("list_projects", { query: name, limit: 10 });
-  const match = asArray(extractData(listed)).find((project) => isSameText(project.name, name) && belongsToTeam(project, team));
-  if (!match) return;
-  const id = match.id ?? match.slugId ?? "<id>";
-  throw new AxiError("operational", `project already exists: ${id} ${match.name ?? name}`, [
-    `Run \`linear-axi projects list --query ${formatCommandArg(name)} --full\` to inspect matching projects`,
-    `Run \`linear-axi projects update --id ${id} --summary "Updated scope"\` to edit it`,
-    `Run \`linear-axi projects create --name ${formatCommandArg(`${name} copy`)} --team ${formatCommandArg(team)}\` to create a distinct project`,
-  ]);
+  await ensureNamedResourceDoesNotExist(runtime, {
+    resource: "project",
+    listTool: "list_projects",
+    listArgs: { query: name, limit: 10 },
+    query: name,
+    team,
+    name: (project) => project.name,
+    id: (project) => project.id ?? project.slugId ?? "<id>",
+    help: (id) => [
+      `Run \`linear-axi projects list --query ${formatCommandArg(name)} --full\` to inspect matching projects`,
+      `Run \`linear-axi projects update --id ${id} --summary "Updated scope"\` to edit it`,
+      `Run \`linear-axi projects create --name ${formatCommandArg(`${name} copy`)} --team ${formatCommandArg(team)}\` to create a distinct project`,
+    ],
+  });
 }
 
 export function projectSaveToolArgs(toolName, args) {
@@ -157,36 +145,98 @@ export function projectSaveToolArgs(toolName, args) {
   };
 }
 
+export async function renderMutation(runtime, options) {
+  const result = options.toolNames
+    ? await callAvailableTool(runtime, options.toolNames, options.argsForTool ?? options.args)
+    : await runtime.client.callTool(options.tool, options.args);
+  return renderToon(options.render(mutationData(result, options.help)));
+}
+
+export function renderDetailView(options) {
+  if (options.full) return renderToon({ [options.resource]: options.detail });
+  const compact = options.compact(options.detail);
+  return renderToon({
+    [options.resource]: compact[options.resource],
+    ...(compact.truncated ? { help: [`Run \`${options.fullCommand}\` to show the complete ${options.resource}`] } : {}),
+  });
+}
+
 export async function getDocumentDetail(id, runtime) {
-  try {
-    const detailed = await callAvailableTool(runtime, ["get_document"], { id });
-    const data = extractData(detailed);
-    return isEmptyObject(data) || isBlankDocumentDetail(data) ? null : sanitizeDocument(data, id);
-  } catch (error) {
-    if (!isUnknownToolError(error)) throw error;
+  return getDetailWithListFallback(runtime, {
+    detailTool: "get_document",
+    detailArgs: { id },
+    listTool: "list_documents",
+    listArgs: { query: id, limit: 10 },
+    identityFields: ["id", "title", "name"],
+    matches: (document) => document.id === id || document.slugId === id,
+    transform: (document) => sanitizeDocument(document, id),
+  });
+}
+
+async function getDetailWithListFallback(runtime, options) {
+  const knownToolNames = options.requireKnownDetailTool
+    ? new Set((typeof runtime.client.listTools === "function" ? await runtime.client.listTools() : []).map((tool) => tool.name))
+    : null;
+  const hasListTool = () => knownToolNames
+    ? knownToolNames.has(options.listTool)
+    : hasTool(runtime, options.listTool);
+
+  if (!options.requireKnownDetailTool || knownToolNames.has(options.detailTool)) {
+    try {
+      const detailed = options.requireKnownDetailTool
+        ? await runtime.client.callTool(options.detailTool, options.detailArgs)
+        : await callAvailableTool(runtime, [options.detailTool], options.detailArgs);
+      const data = extractData(detailed);
+      if (isEmptyObject(data) || isBlankDetail(data, options.identityFields)) {
+        if (!options.fallbackOnBlankDetail || !(await hasListTool())) return null;
+      } else if (options.detailMatches && !options.detailMatches(data)) {
+        if (!(await hasListTool())) return null;
+      } else {
+        return detailResult(data, options);
+      }
+    } catch (error) {
+      if (!isUnknownToolError(error)) throw error;
+    }
   }
 
-  const listed = await runtime.client.callTool("list_documents", { query: id, limit: 10 });
-  const rawMatches = asArray(extractData(listed)).filter((document) => document.id === id || document.slugId === id);
-  if (rawMatches.length === 0) return null;
-  return sanitizeDocument(rawMatches[0], id);
+  const listed = await runtime.client.callTool(options.listTool, options.listArgs);
+  const match = asArray(extractData(listed)).find(options.matches);
+  if (!match) return null;
+  return detailResult(match, options);
+}
+
+function detailResult(detail, options) {
+  return options.transform ? options.transform(detail) : detail;
+}
+
+async function ensureNamedResourceDoesNotExist(runtime, options) {
+  const listed = await runtime.client.callTool(options.listTool, options.listArgs);
+  const match = asArray(extractData(listed)).find((item) => {
+    return isSameText(options.name(item), options.query) && belongsToTeam(item, options.team);
+  });
+  if (!match) return;
+  const id = options.id(match);
+  const name = options.name(match) ?? options.query;
+  throw new AxiError("operational", `${options.resource} already exists: ${id} ${name}`, options.help(id));
 }
 
 export async function ensureDocumentExists(id, runtime) {
-  const document = await getDocumentDetail(id, runtime);
-  if (!document) {
-    throw notFound("document", id, [
-      `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
-      'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
-    ]);
-  }
-  return document;
+  return requireExistingDetail(getDocumentDetail(id, runtime), "document", id, [
+    `Run \`linear-axi documents list --query ${formatCommandArg(id)} --fields id,title,updatedAt\` to search for the document`,
+    'Run `linear-axi documents create --title "Spec" --team "<team>"` to create a new document',
+  ]);
+}
+
+async function requireExistingDetail(detailPromise, resource, id, help) {
+  const detail = await detailPromise;
+  if (!detail) throw notFound(resource, id, help);
+  return detail;
 }
 
 export async function ensureMilestoneExists(project, id, runtime) {
   const result = await runtime.client.callTool("get_milestone", { project, query: id });
   const milestone = extractData(result);
-  if (!milestone || (typeof milestone === "object" && Object.keys(milestone).length === 0)) {
+  if (!milestone || isEmptyContainer(milestone)) {
     throw notFound("milestone", id, [
       `Run \`linear-axi milestones list --project ${formatCommandArg(project)}\` to find the milestone id`,
       `Run \`linear-axi milestones create --project ${formatCommandArg(project)} --name "<name>"\` to create a new milestone`,
@@ -256,28 +306,16 @@ function isSameText(left, right) {
   return String(left ?? "").trim().toLocaleLowerCase() === String(right ?? "").trim().toLocaleLowerCase();
 }
 
-function projectMatches(project, value) {
-  if (!project || typeof project !== "object" || Array.isArray(project)) return false;
-  return project.id === value || project.slugId === value || isSameText(project.name, value);
-}
-
 function isEmptyObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
 }
 
-function isBlankIssueDetail(value) {
-  return isBlankDetail(value, ["identifier", "id", "title"]);
-}
-
-function isBlankDocumentDetail(value) {
-  return isBlankDetail(value, ["id", "title", "name"]);
-}
-
-function isBlankProjectDetail(value) {
-  return isBlankDetail(value, ["id", "slugId", "name"]);
+function isEmptyContainer(value) {
+  return value && typeof value === "object" && Object.keys(value).length === 0;
 }
 
 function isBlankDetail(value, identityFields) {
+  if (!identityFields) return false;
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return identityFields.every((field) => !hasText(value[field]));
 }
@@ -288,7 +326,6 @@ function hasText(value) {
 
 function belongsToTeam(item, team) {
   if (team === undefined || team === null || team === "") return true;
-  const expected = String(team).trim().toLocaleLowerCase();
   const candidates = [
     item.team,
     item.team?.id,
@@ -297,5 +334,5 @@ function belongsToTeam(item, team) {
     item.teamId,
     ...(Array.isArray(item.teams) ? item.teams.flatMap((entry) => [entry, entry?.id, entry?.key, entry?.name]) : []),
   ];
-  return candidates.some((candidate) => String(candidate ?? "").trim().toLocaleLowerCase() === expected);
+  return candidates.some((candidate) => isSameText(candidate, team));
 }

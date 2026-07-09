@@ -54,7 +54,7 @@ export async function main(args, context) {
 
 export async function run(args, runtime) {
   if (args.length === 0) {
-    return renderCommandResult(await homeCommand(runtime));
+    return renderToon(await homeCommand(runtime));
   }
 
   const [command, ...rest] = args;
@@ -73,10 +73,6 @@ export async function run(args, runtime) {
 
 function trimFinalNewline(output) {
   return typeof output === "string" ? output.replace(/\n$/, "") : output;
-}
-
-function renderCommandResult(output) {
-  return typeof output === "string" ? output : renderToon(output);
 }
 
 function cliOptions(args, context) {

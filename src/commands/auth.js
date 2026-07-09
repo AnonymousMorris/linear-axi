@@ -1,27 +1,24 @@
 import { createServer } from "node:http";
 import { parseFlags, usage } from "../args.js";
 import { renderToon } from "../format.js";
-import { parseFiniteNumber } from "../lib/cli-helpers.js";
+import { dispatchCommandGroup, parseFiniteNumber } from "../lib/cli-helpers.js";
 import { authFinishHelp, authLoginHelp, authLogoutHelp, groupHelp } from "./help.js";
 
 export async function authCommand(args, runtime) {
-  const [subcommand, ...rest] = args;
-  if (subcommand === "--help" || subcommand === "-h") return groupHelp("auth", ["login", "finish", "logout"]);
-
-  switch (subcommand) {
-    case "login":
-      return loginCommand(rest, runtime);
-    case "finish":
-      return finishCommand(rest, runtime);
-    case "logout":
-      return logoutCommand(rest, runtime);
-    default:
-      throw usage(`unknown auth command: ${subcommand ?? ""}`.trim(), [
-        "Run `linear-axi auth login`",
-        "Run `linear-axi auth finish --code <code>`",
-        "Run `linear-axi auth logout`",
-      ]);
-  }
+  return dispatchCommandGroup(args, {
+    name: "auth",
+    help: () => groupHelp("auth", ["login", "finish", "logout"]),
+    handlers: {
+      login: (rest) => loginCommand(rest, runtime),
+      finish: (rest) => finishCommand(rest, runtime),
+      logout: (rest) => logoutCommand(rest, runtime),
+    },
+    unknownHelp: [
+      "Run `linear-axi auth login`",
+      "Run `linear-axi auth finish --code <code>`",
+      "Run `linear-axi auth logout`",
+    ],
+  });
 }
 
 async function loginCommand(args, runtime) {
