@@ -1960,7 +1960,7 @@ test("resource group help is available before choosing a subcommand", async () =
   const output = await run(["projects", "--help"], runtime({}));
 
   assert.match(output, /usage: linear-axi projects <subcommand> \[flags\]/);
-  assert.match(output, /subcommands\[3\]:\n  list, create, update/);
+  assert.match(output, /subcommands\[4\]:\n  list, create, update, labels/);
   assert.match(output, /flags\{list\}:\n  --query <text>, --team <team>, --state <state>, --limit <n> \(default 50\), --fields <a,b,c>, --full/);
   assert.match(output, /flags\{create\}:\n  --name <text> \(required\), --team <team> or --teamId <id> \(required\)/);
   assert.match(output, /flags\{update\}:\n  --id <id> \(required\)/);
