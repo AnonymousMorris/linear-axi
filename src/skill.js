@@ -71,6 +71,8 @@ Run \`npx -y linear-axi --help\` for global flags, \`npx -y linear-axi <resource
 - Linear command output is TOON-encoded and token-efficient; pipe through grep/head only when a list is very long.
 - Default issue and project lists are grouped by status, show active work first, and keep ids last. Use \`--fields\` when you need a custom column order.
 - Mutations validate targets and report compact results; re-running a failed mutation is safe.
+- Project labels are separate from issue labels: use \`projects labels list --includeGroups --full\`, \`projects labels create\`, and \`projects labels update\`; \`labels list\` is for issue labels. Team-scoped labels/groups require \`--teamId <uuid>\` on each create; use \`--parent <group-id>\` for children and \`--isGroup --groupType singleSelect\` for a single-select group.
+- Project create/update accepts repeatable \`--label <name-or-id>\`, which replaces the entire label set. Inspect existing labels first and include all labels to keep. Omit the flag to preserve labels; use \`projects update --id <id> --clear-labels\` to explicitly remove all labels.
 - For multi-line markdown descriptions, comments, or documents, write the text to a UTF-8 file and pass \`--description-file <path>\`, \`--body-file <path>\`, or \`--content-file <path>\`.
 - Repository project defaults are validated before an issue, document, or milestone command uses them unless \`--project <project>\` overrides them. Use \`--all-projects\` on issue and document list commands only when a workspace-wide list is intended.
 `;

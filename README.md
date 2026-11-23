@@ -84,6 +84,13 @@ linear-axi issues update --id LIN-123 --state Done
 linear-axi projects list --query roadmap
 linear-axi projects create --name "Roadmap" --team ENG
 linear-axi projects update --id <id> --summary "Updated scope"
+linear-axi projects labels list --team ENG --includeGroups --full
+linear-axi projects labels create --name "Audience" --isGroup --groupType singleSelect --teamId <team-uuid>
+linear-axi projects labels create --name internal --parent <group-id> --teamId <team-uuid>
+linear-axi projects labels update --id <label-id> --description "Internal consumers"
+linear-axi projects create --name "Internal tooling" --team ENG --label <label-id>
+linear-axi projects update --id <id> --label <label-id> --label <another-label-id>
+linear-axi projects update --id <id> --clear-labels
 linear-axi teams list
 linear-axi users list --query morris
 linear-axi labels list --team ENG
@@ -101,6 +108,16 @@ linear-axi statuses list --team ENG
 linear-axi update --check
 linear-axi update
 ```
+
+## Project labels and groups
+
+Project labels are separate from issue labels: `labels list` lists **issue** labels, while `projects labels list` lists **project** labels. Add `--includeGroups` to inspect groups; `--full` preserves all returned metadata, and `--fields id,name,isGroup,parent,groupType` selects specific columns. List commands support pagination with `--cursor` and filtering by `--team` and `--name`.
+
+Create a project label group with `projects labels create --name "Audience" --isGroup --groupType singleSelect`. Add child labels with `--parent <group-id>`. Groups default to `singleSelect`; `multiSelect` is also supported. Groups organize the selectable labels and cannot themselves be assigned to projects. To create a team-scoped group or label, pass `--teamId <uuid>` on **each** create command; omitting it creates a workspace-level label. Find UUIDs with `teams list --fields id,name,key`. On update, `--teamId` only disambiguates a label name; it cannot move labels between teams.
+
+Use `projects labels update --id <name-or-id>` to change a label's name, description, color, parent, or group configuration. Prefer IDs when names are ambiguous. These commands require the MCP server's `list_project_labels` and `save_project_label` tools; they do not fall back to issue-label tools.
+
+On project create/update, repeat `--label <name-or-id>` to send the **entire desired label set**. This replaces existing labels, including labels in other groups. First inspect existing labels with `projects list --query <project> --full` and include every label you want to keep. Omit `--label` to leave labels unchanged, or explicitly use `projects update --id <id> --clear-labels` to remove all labels. `--clear-labels` cannot be combined with `--label`. Group selection rules and label applicability are enforced by Linear.
 
 ## Output behavior
 

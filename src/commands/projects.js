@@ -1,8 +1,9 @@
-import { parseFlags } from "../args.js";
+import { parseFlags, usage } from "../args.js";
 import { collectKnownArgs, dispatchCommandGroup, rejectIdOnCreate, requireValue } from "../lib/cli-helpers.js";
 import { compactProjectMutation } from "../lib/linear-format.js";
 import { groupHelp, projectCreateHelp, projectUpdateHelp } from "./help.js";
 import { aliasListCommand } from "./list-resource.js";
+import { projectLabelCommand } from "./project-labels.js";
 import {
   ensureProjectDoesNotExist,
   ensureProjectExists,
@@ -27,9 +28,10 @@ const PROJECT_ID_ON_CREATE_HELP = [
 export async function projectCommand(args, runtime) {
   return dispatchCommandGroup(args, {
     name: "projects",
-    help: () => groupHelp("projects", ["list", "create", "update"]),
+    help: () => groupHelp("projects", ["list", "create", "update", "labels"]),
     handlers: {
       list: (rest) => aliasListCommand("projects", rest, runtime),
+      labels: (rest) => projectLabelCommand(rest, runtime),
       create: (rest) => createProjectCommand(rest, runtime),
       update: (rest) => updateProjectCommand(rest, runtime),
     },
@@ -41,22 +43,37 @@ export async function projectCommand(args, runtime) {
 }
 
 async function createProjectCommand(args, runtime) {
-  const parsed = parseFlags(args, { boolean: ["help"], example: 'projects create --name "Roadmap" --team ENG' });
+  const parsed = parseFlags(args, { boolean: ["help"], array: ["label"], example: 'projects create --name "Roadmap" --team ENG' });
   if (parsed.help) return projectCreateHelp();
   rejectIdOnCreate("project", PROJECT_ID_ON_CREATE_HELP, parsed);
-  const toolArgs = collectKnownArgs(parsed, PROJECT_MUTATION_FIELDS);
+  const toolArgs = projectMutationArgs(parsed);
   requireValue(toolArgs.name && (toolArgs.team ?? toolArgs.teamId), "creating a project requires --name and --team", PROJECT_CREATE_HELP);
   await ensureProjectDoesNotExist(toolArgs.name, toolArgs.team ?? toolArgs.teamId, runtime);
   return saveProject(toolArgs, runtime, ["create_project", "save_project"]);
 }
 
 async function updateProjectCommand(args, runtime) {
-  const parsed = parseFlags(args, { boolean: ["help"], example: 'projects update --id <id> --summary "Updated scope"' });
+  const parsed = parseFlags(args, { boolean: ["help", "clear-labels"], array: ["label"], example: 'projects update --id <id> --summary "Updated scope"' });
   if (parsed.help) return projectUpdateHelp();
-  const toolArgs = collectKnownArgs(parsed, PROJECT_MUTATION_FIELDS);
+  const toolArgs = projectMutationArgs(parsed);
   requireValue(toolArgs.id, "updating a project requires --id", PROJECT_UPDATE_HELP);
   await ensureProjectExists(toolArgs.id, runtime);
   return saveProject(toolArgs, runtime, ["update_project", "save_project"]);
+}
+
+function projectMutationArgs(parsed) {
+  const toolArgs = collectKnownArgs(parsed, PROJECT_MUTATION_FIELDS);
+  if (parsed["clear-labels"] && parsed.label !== undefined) {
+    throw usage("--clear-labels cannot be combined with --label", ["Run `linear-axi projects update --help`"]);
+  }
+  if (parsed.label !== undefined) {
+    if (parsed.label.some((label) => !label.trim() || label.startsWith("--"))) {
+      throw usage("--label requires a non-empty label name or ID", ["Run `linear-axi projects labels list`"]);
+    }
+    toolArgs.labels = parsed.label;
+  }
+  if (parsed["clear-labels"]) toolArgs.labels = [];
+  return toolArgs;
 }
 
 async function saveProject(toolArgs, runtime, toolNames) {

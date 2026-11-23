@@ -44,9 +44,16 @@ export function groupHelp(name, subcommands) {
     ],
     projects: [
       "linear-axi projects list --limit 25",
-      'linear-axi projects create --name "Roadmap" --team ENG',
+      'linear-axi projects create --name "Roadmap" --team ENG --label internal',
+      'linear-axi projects labels list --includeGroups',
       'linear-axi projects update --id <id> --summary "Updated scope"',
       'linear-axi issues create --title "Task" --team ENG --project "Roadmap"',
+    ],
+    "projects labels": [
+      "linear-axi projects labels list --includeGroups --full",
+      'linear-axi projects labels create --name Audience --isGroup --groupType singleSelect',
+      'linear-axi projects labels create --name internal --parent <group-id>',
+      'linear-axi projects labels update --id <label-id> --description "Internal consumers"',
     ],
     documents: [
       "linear-axi documents list --all-projects --limit 25",
@@ -194,6 +201,7 @@ const PROJECT_MUTATION_FIELDS_HELP = `  --name <name>
   --lead <user>
   --startDate <yyyy-mm-dd>
   --targetDate <yyyy-mm-dd>
+  --label <name-or-id>  repeatable; replaces the entire label set, omit to leave unchanged
 `;
 
 export function projectCreateHelp() {
@@ -208,8 +216,46 @@ export function projectUpdateHelp() {
   return `usage: linear-axi projects update --id <id> [fields]
 flags:
   --id <id>
-${PROJECT_MUTATION_FIELDS_HELP}examples:
+${PROJECT_MUTATION_FIELDS_HELP}  --clear-labels  remove all labels; cannot be combined with --label
+examples:
   linear-axi projects update --id <id> --summary "Updated scope"
+  linear-axi projects update --id <id> --label internal --label "Eng-Driven"
+  linear-axi projects update --id <id> --clear-labels
+`;
+}
+
+export function projectLabelHelp(action) {
+  if (!action) return groupHelp("projects labels", ["list", "create", "update"]);
+  if (action === "list") return `usage: linear-axi projects labels list [flags]
+flags:
+  --limit <n> default ${DEFAULT_LIMIT}
+  --cursor <cursor>
+  --name <text>
+  --team <name-or-id>
+  --orderBy createdAt|updatedAt
+  --includeArchived
+  --includeGroups  include label groups (not directly assignable to projects)
+  --fields <comma-separated-fields>
+  --full
+examples:
+  linear-axi projects labels list --team ENG --includeGroups --full
+`;
+  return `usage: linear-axi projects labels ${action} --${action === "create" ? "name <name>" : "id <name-or-id>"} [fields]
+flags:
+  --${action === "create" ? "name <name>  required" : "id <name-or-id>  required"}
+${action === "update" ? "  --name <name>\n" : ""}  --description <text>
+  --color <hex>
+  --teamId <uuid>  omit for workspace scope; on update only disambiguates the name
+  --parent <group-name-or-id>
+  --isGroup[=true|false]
+  --groupType singleSelect|multiSelect  groups default to singleSelect on creation
+examples:
+  linear-axi projects labels create --name "Customer Source" --isGroup --groupType singleSelect --teamId <uuid>
+  linear-axi projects labels create --name internal --parent <group-id> --teamId <uuid>
+  linear-axi projects labels update --id <label-id> --description "Internal consumers"
+notes:
+  Project labels are separate from issue labels (labels list).
+  --teamId requires a team UUID, not a team key. A label's team cannot be changed.
 `;
 }
 
@@ -381,8 +427,9 @@ const GROUP_FLAG_HELP = {
   ],
   projects: [
     "flags{list}:\n  --query <text>, --team <team>, --state <state>, --limit <n> (default 50), --fields <a,b,c>, --full",
-    "flags{create}:\n  --name <text> (required), --team <team> or --teamId <id> (required), --summary <text>, --description <markdown>, --status <status>, --lead <user>",
-    "flags{update}:\n  --id <id> (required), --name <text>, --team <team> or --teamId <id>, --summary <text>, --description <markdown>, --status <status>, --lead <user>",
+    "flags{create}:\n  --name <text> (required), --team <team> or --teamId <id> (required), --summary <text>, --description <markdown>, --status <status>, --lead <user>, --label <name-or-id> (repeatable, replaces all labels)",
+    "flags{update}:\n  --id <id> (required), --name <text>, --team <team> or --teamId <id>, --summary <text>, --description <markdown>, --status <status>, --lead <user>, --label <name-or-id> (repeatable, replaces all labels), --clear-labels",
+    "flags{labels}:\n  list, create, update; run `linear-axi projects labels --help`",
   ],
   documents: [
     "flags{list}:\n  --project <project>, --all-projects, --query <text>, --team <team>, --limit <n> (default 50), --fields <a,b,c>, --full",
